@@ -1,0 +1,187 @@
+"""Source persistence + linking routes."""
+import uuid
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, File, UploadFile, status
+from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.auth import CurrentUser, CurrentUserDep
+from app.core.errors import NotFound
+from app.db.models import Concept, ConceptSource, Source, SourceChunk
+from app.db.models.source import IngestStatus, SourceOrigin, SourceType
+from app.db.session import get_session
+from app.modules.sources.dedup import canonicalize_url, dedupe_key
+from app.modules.sources.discovery import discover
+from app.modules.sources.schemas import (
+    DiscoverRequest,
+    DiscoverResponse,
+    SourceAccept,
+    SourceNote,
+    SourceOut,
+)
+
+router = APIRouter(tags=["sources"])
+
+
+@router.post("/sources/notes", response_model=SourceOut, status_code=status.HTTP_201_CREATED)
+async def create_note(payload: SourceNote, user: CurrentUser = CurrentUserDep,
+                      session: AsyncSession = Depends(get_session)):
+    """Save a note/transcript as a first-class library source and index it."""
+    from app.modules.users.routes import ensure_profile
+    from app.jobs.queue import enqueue_job
+
+    await ensure_profile(session, user.id, user.email)
+    source = Source(
+        title=payload.title,
+        storage_path=f"notes/{uuid.uuid4()}.txt",
+        source_type=SourceType(payload.source_type),
+        origin=SourceOrigin.USER_UPLOADED,
+        owner_id=user.id,
+        ingest_status=IngestStatus.PENDING,
+        metadata_={"content": payload.content, "kind": "note"},
+    )
+    session.add(source)
+    await session.flush()
+    await enqueue_job(session, "SOURCE_INGEST", {"source_id": str(source.id)}, dedupe_key=f"ingest:{source.id}")
+    await session.commit()
+    return _to_out(source, 0)
+
+
+@router.post("/sources/upload", response_model=SourceOut, status_code=status.HTTP_201_CREATED)
+async def upload_source(file: UploadFile = File(...), user: CurrentUser = CurrentUserDep,
+                        session: AsyncSession = Depends(get_session)):
+    """Store a PDF locally and queue text extraction/indexing."""
+    if file.content_type != "application/pdf" and not (file.filename or "").lower().endswith(".pdf"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=415, detail="Only PDF files are supported")
+    data = await file.read()
+    if len(data) > 25 * 1024 * 1024:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=413, detail="PDF must be 25 MB or smaller")
+    from app.modules.users.routes import ensure_profile
+    from app.providers.storage import make_storage
+    from app.jobs.queue import enqueue_job
+
+    await ensure_profile(session, user.id, user.email)
+    key = f"uploads/{uuid.uuid4()}.pdf"
+    await make_storage().put(key, data, "application/pdf")
+    source = Source(title=(file.filename or "Uploaded PDF")[:500], storage_path=key,
+                    source_type=SourceType.ACADEMIC_PAPER, origin=SourceOrigin.USER_UPLOADED,
+                    owner_id=user.id, ingest_status=IngestStatus.PENDING,
+                    metadata_={"content_type": "application/pdf"})
+    session.add(source)
+    await session.flush()
+    await enqueue_job(session, "SOURCE_INGEST", {"source_id": str(source.id)}, dedupe_key=f"ingest:{source.id}")
+    await session.commit()
+    return _to_out(source, 0)
+
+
+@router.post("/sources/discover", response_model=DiscoverResponse)
+async def discover_sources(payload: DiscoverRequest, _user: CurrentUser = CurrentUserDep):
+    """Search trusted providers and return ranked, deduplicated candidates."""
+    candidates, raw = await discover(payload.query, payload.domain, payload.limit)
+    return DiscoverResponse(
+        candidates=candidates,
+        policy=payload.domain or "general",
+        deduped_from=raw,
+    )
+
+
+@router.post("/sources", response_model=SourceOut, status_code=status.HTTP_201_CREATED)
+async def accept_source(
+    payload: SourceAccept,
+    user: CurrentUser = CurrentUserDep,
+    session: AsyncSession = Depends(get_session),
+):
+    """Persist a discovered source (dedup by DOI > arXiv > canonical URL)
+    and queue background ingestion."""
+    from app.modules.users.routes import ensure_profile
+
+    await ensure_profile(session, user.id, user.email)
+    key = dedupe_key(payload.doi, payload.arxiv_id, payload.url)
+    canonical = canonicalize_url(payload.url)
+    del key  # existence checks below use the structured fields directly
+
+    if payload.doi:
+        result = await session.execute(select(Source).where(Source.doi == payload.doi.strip().lower()))
+        source = result.scalar_one_or_none()
+    elif payload.arxiv_id:
+        result = await session.execute(select(Source).where(Source.arxiv_id == payload.arxiv_id.strip().lower()))
+        source = result.scalar_one_or_none()
+    else:
+        result = await session.execute(select(Source).where(Source.canonical_url == canonical))
+        source = result.scalar_one_or_none()
+
+    if source is None:
+        source = Source(
+            title=payload.title[:500],
+            url=payload.url,
+            canonical_url=canonical,
+            source_type=SourceType(payload.source_type),
+            origin=SourceOrigin.DISCOVERED,
+            publisher=payload.publisher,
+            authors=payload.authors or [],
+            publication_date=payload.published,
+            authority_score=payload.authority,
+            doi=payload.doi.strip().lower() if payload.doi else None,
+            arxiv_id=payload.arxiv_id.strip().lower() if payload.arxiv_id else None,
+            owner_id=user.id,
+            retrieved_at=datetime.now(UTC),
+            ingest_status=IngestStatus.PENDING,
+        )
+        session.add(source)
+        await session.flush()
+
+    if payload.concept_id:
+        concept_uuid = uuid.UUID(payload.concept_id)
+        exists = await session.execute(select(Concept.id).where(Concept.id == concept_uuid))
+        if exists.scalar_one_or_none() is None:
+            raise NotFound("concept", payload.concept_id)
+        link_exists = await session.execute(
+            select(ConceptSource).where(
+                ConceptSource.concept_id == concept_uuid,
+                ConceptSource.source_id == source.id,
+            )
+        )
+        if link_exists.scalar_one_or_none() is None:
+            session.add(ConceptSource(concept_id=concept_uuid, source_id=source.id, relevance=0.8))
+
+    from app.jobs.queue import enqueue_job
+
+    await enqueue_job(session, "SOURCE_INGEST", {"source_id": str(source.id)},
+                      dedupe_key=f"ingest:{source.id}")
+    await session.commit()
+
+    chunk_count = await session.scalar(
+        select(func.count()).select_from(SourceChunk).where(SourceChunk.source_id == source.id)
+    )
+    return _to_out(source, int(chunk_count or 0))
+
+
+@router.get("/sources", response_model=list[SourceOut])
+async def list_sources(user: CurrentUser = CurrentUserDep, session: AsyncSession = Depends(get_session)):
+    rows = await session.execute(select(Source).where(or_(Source.owner_id == user.id, Source.owner_id.is_(None))).order_by(Source.created_at.desc()).limit(200))
+    out = []
+    for s in rows.scalars().all():
+        count = await session.scalar(
+            select(func.count()).select_from(SourceChunk).where(SourceChunk.source_id == s.id)
+        )
+        out.append(_to_out(s, int(count or 0)))
+    return out
+
+
+def _to_out(s: Source, chunk_count: int) -> SourceOut:
+    return SourceOut(
+        id=str(s.id),
+        title=s.title,
+        url=s.url,
+        source_type=s.source_type.value,
+        origin=s.origin.value,
+        publisher=s.publisher,
+        authors=s.authors or [],
+        published=s.publication_date,
+        ingest_status=s.ingest_status.value,
+        chunk_count=chunk_count,
+        created_at=s.created_at.isoformat() if s.created_at else None,
+    )

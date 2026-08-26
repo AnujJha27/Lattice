@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+/*
+  LATTICE DESIGN TOKENS — "The Observatory"
+  A personal star chart for what you know. Concepts are stars,
+  edges are constellations, mastery is luminosity, sources are
+  cited like an astronomical catalogue.
+*/
+:root {
+  /* Sky */
+  --bg-base: #0a0e1a;
+  --bg-surface: #101624;
+  --bg-raised: #151c2e;
+  --bg-overlay: #1a2236;
+
+  /* Hairlines */
+  --border-subtle: rgba(138, 150, 180, 0.13);
+  --border-strong: rgba(201, 169, 97, 0.35);
+
+  /* Text */
+  --text-primary: #eae5d9;
+  --text-secondary: #8b93a7;
+  --text-muted: #565e73;
+
+  /* Brass — the single accent */
+  --accent: #c9a961;
+  --accent-hover: #d8ba78;
+  --accent-muted: rgba(201, 169, 97, 0.14);
+
+  /* Semantic */
+  --success: #7fb069;
+  --warning: #d9a441;
+  --danger: #cf6679;
+
+  /* Stellar magnitude scale (mastery) */
+  --mastery-0: #2b3348;
+  --mastery-learning: #7aa5d8;
+  --mastery-familiar: #e3ddce;
+  --mastery-mastered: #c9a961;
+
+  /* Radius — drafting instruments, not bubbles */
+  --radius-sm: 4px;
+  --radius-md: 7px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 6px 20px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 16px 48px rgb(0 0 0 / 0.55);
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --duration-slow: 350ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Type families (wired via next/font in layout.tsx) */
+  --font-display: var(--font-spectral), Georgia, serif;
+  --font-body: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+}
+
+/* ── Star-chart annotation primitives ─────────────────────────── */
+
+/* Eyebrow: mono, tracked-out catalogue label */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* Atlas entry: eyebrow + serif title + coordinates row */
+.atlas-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+/* Graticule — faint chart grid for full-bleed canvases */
+.graticule {
+  background-image:
+    linear-gradient(var(--border-subtle) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px);
+  background-size: 56px 56px;
+  opacity: 0.35;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Motion effects (aurora / border beam) ────────────────────── */
+
+.aurora-blob {
+  position: absolute;
+  width: 60vw;
+  height: 60vw;
+  border-radius: 9999px;
+  filter: blur(110px);
+  opacity: 0.16;
+  will-change: transform;
+}
+.aurora-a {
+  background: radial-gradient(circle, #c9a961 0%, transparent 65%);
+  top: -20%;
+  left: -10%;
+  animation: aurora-drift-a 26s ease-in-out infinite alternate;
+}
+.aurora-b {
+  background: radial-gradient(circle, #3d5a99 0%, transparent 65%);
+  bottom: -25%;
+  right: -15%;
+  animation: aurora-drift-b 32s ease-in-out infinite alternate;
+}
+@keyframes aurora-drift-a {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(14vw, 10vh) scale(1.15); }
+}
+@keyframes aurora-drift-b {
+  from { transform: translate(0, 0) scale(1.1); }
+  to   { transform: translate(-12vw, -8vh) scale(0.95); }
+}
+
+@keyframes border-orbit {
+  to { offset-distance: 100%; }
+}
+
+/* Glass panel */
+.glass {
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* Brass gradient CTA */
+.btn-brass {
+  background: linear-gradient(135deg, #d8ba78 0%, #c9a961 45%, #a8894e 100%);
+  color: #14100a;
+  box-shadow: 0 2px 12px rgba(201, 169, 97, 0.25);
+  transition: box-shadow var(--duration-normal) var(--ease-out),
+              transform var(--duration-fast) var(--ease-out);
+}
+.btn-brass:hover {
+  box-shadow: 0 4px 24px rgba(201, 169, 97, 0.4);
+  transform: translateY(-1px);
+}
+.btn-brass:active { transform: translateY(0); }
