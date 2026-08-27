@@ -16,10 +16,18 @@ const GROUNDING_LABELS: Record<string, string> = {
   GENERATED: "AI explanation — no source coverage found",
 };
 
+const GENERATION_STAGES = [
+  "Finding relevant sources",
+  "Building lesson context",
+  "Writing the chapter",
+  "Checking citations",
+];
+
 export default function ConceptPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const concept = useConcept(id);
   const [queued, setQueued] = useState(false);
+  const [generationStage, setGenerationStage] = useState(0);
   const lesson = useLesson(id, queued);
   const generate = useGenerateLesson(id);
 
@@ -27,8 +35,20 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
     if (lesson.data) setQueued(false);
   }, [lesson.data]);
 
-  const showLesson = lesson.data?.content?.intuition !== undefined ? lesson.data : undefined;
   const isGenerating = queued || generate.isPending;
+
+  useEffect(() => {
+    if (!isGenerating) {
+      setGenerationStage(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setGenerationStage((stage) => (stage + 1) % GENERATION_STAGES.length);
+    }, 4_000);
+    return () => clearInterval(timer);
+  }, [isGenerating]);
+
+  const showLesson = lesson.data?.content?.intuition !== undefined ? lesson.data : undefined;
   const noLessonYet = !lesson.data && !isGenerating;
   const [activeSection, setActiveSection] = useState(0);
   const sections = showLesson?.content.sections ?? [];
@@ -99,6 +119,9 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
             <p className="mt-2 max-w-sm text-sm leading-relaxed text-[var(--text-secondary)]">
               Gathering source excerpts and writing an explanation that cites them.
               This takes 1–3 minutes for a full chapter.
+            </p>
+            <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-[var(--accent)]" aria-live="polite">
+              {GENERATION_STAGES[generationStage]}
             </p>
             <div className="mt-6 h-1 w-56 overflow-hidden rounded-full bg-[var(--bg-raised)]">
               <motion.div
