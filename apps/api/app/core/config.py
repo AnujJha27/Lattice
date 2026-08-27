@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     supabase_service_role_key: str = ""
     # Legacy projects sign JWTs with this shared secret instead of JWKS.
     supabase_jwt_secret: str | None = None
+    # Comma-separated addresses allowed to use the production app.
+    allowed_emails: str = ""
     database_url: str = Field(
         default="postgresql+asyncpg://postgres:postgres@localhost:5432/postgres",
         description="Async SQLAlchemy URL (asyncpg driver)",
@@ -60,6 +62,10 @@ class Settings(BaseSettings):
     @property
     def jwks_url(self) -> str:
         return f"{self.supabase_url}/auth/v1/.well-known/jwks.json"
+
+    @property
+    def allowed_email_set(self) -> set[str]:
+        return {email.strip().casefold() for email in self.allowed_emails.split(",") if email.strip()}
 
 
 @lru_cache

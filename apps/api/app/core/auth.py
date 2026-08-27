@@ -4,7 +4,8 @@ from dataclasses import dataclass
 
 from fastapi import Depends, Request
 
-from app.core.errors import AppError
+from app.core.config import get_settings
+from app.core.errors import AppError, Forbidden
 from app.core.security import InvalidToken, verify_supabase_jwt
 
 
@@ -26,7 +27,13 @@ async def get_current_user(request: Request) -> CurrentUser:
     sub = claims.get("sub")
     if not sub:
         raise AppError("unauthorized", "Token missing subject claim", status_code=401)
-    return CurrentUser(id=uuid.UUID(sub), email=claims.get("email"))
+    email = claims.get("email")
+    settings = get_settings()
+    if settings.is_production and (
+        not isinstance(email, str) or email.casefold() not in settings.allowed_email_set
+    ):
+        raise Forbidden("This email is not authorized to use this application")
+    return CurrentUser(id=uuid.UUID(sub), email=email if isinstance(email, str) else None)
 
 
 CurrentUserDep = Depends(get_current_user)

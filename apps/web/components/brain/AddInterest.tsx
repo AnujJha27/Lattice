@@ -7,15 +7,13 @@ import { ApiError } from "@/lib/api";
 
 export function AddInterest({ onAdded }: { onAdded?: () => void }) {
   const [name, setName] = useState("");
-  const [domain, setDomain] = useState("");
   const addInterest = useAddInterest();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    await addInterest.mutateAsync({ name: name.trim(), domain: domain.trim() || undefined });
+    await addInterest.mutateAsync({ name: name.trim() });
     setName("");
-    setDomain("");
     onAdded?.();
   }
 
@@ -36,21 +34,7 @@ export function AddInterest({ onAdded }: { onAdded?: () => void }) {
           className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3.5 py-2.5 text-sm outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
         />
       </div>
-      <div>
-        <label
-          htmlFor="interest-domain"
-          className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-secondary)]"
-        >
-          Domain <span className="normal-case tracking-normal">(optional)</span>
-        </label>
-        <input
-          id="interest-domain"
-          value={domain}
-          onChange={(e) => setDomain(e.target.value)}
-          placeholder="Mathematics, Physics, CS…"
-          className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3.5 py-2.5 text-sm outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
-        />
-      </div>
+      <p className="text-xs text-[var(--text-muted)]">We&apos;ll classify the domain automatically.</p>
       <button
         type="submit"
         disabled={!name.trim() || addInterest.isPending}
