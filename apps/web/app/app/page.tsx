@@ -6,7 +6,7 @@ import { motion } from "motion/react";
 import { api } from "@/lib/api";
 import { AddInterest } from "@/components/brain/AddInterest";
 import { useBrainGraph } from "@/hooks/useBrain";
-import { BorderBeam, CountUp, Reveal } from "@/components/ui/effects";
+import { CountUp, Reveal } from "@/components/ui/effects";
 import { SpotlightCard } from "@/components/ui/Spotlight";
 import { Shimmer } from "@/components/ui/Shimmer";
 
@@ -90,7 +90,6 @@ export default function OverviewPage() {
           {/* Sky snapshot */}
           <Reveal delay={0.08}>
             <SpotlightCard className="h-full">
-              <BorderBeam duration={8} />
               <div className="p-6">
                 <p className="eyebrow mb-5">Tonight&apos;s sky</p>
                 {brain.isPending ? (

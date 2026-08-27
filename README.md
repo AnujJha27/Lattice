@@ -4,7 +4,19 @@ A personal, hosted learning platform: a persistent map of what you know, source-
 lessons, pathways, spaced review, and an AI guide — inspired by the publicly observable
 BirdsEyes product experience, implemented entirely from scratch on open infrastructure.
 
-**Current status:** Phase A (hosted foundation) — see `docs/architecture.md`.
+**Status:** hosted pilot. The web app runs on Vercel, the API/worker runs on Render,
+and Supabase provides the database, vector search, and authentication.
+
+**Live deployment:** [web app](https://web-five-omega-34.vercel.app/) ·
+[API health](https://lattice-1gym.onrender.com/api/health)
+
+## What is working
+
+- Brain graph with domain-colored concepts and mastery state
+- Automatic source classification, ranking, chunking, and embeddings
+- AI-generated pathways, grounded lessons, quizzes, reviews, and discovery
+- URL and note sources; PDF uploads remain disabled until object storage is configured
+- Supabase magic-link/Google auth with a production email allowlist
 
 ## Stack
 
@@ -24,7 +36,7 @@ lattice/
 ├── apps/
 │   ├── web/    # Next.js frontend
 │   └── api/    # FastAPI backend
-├── docs/       # architecture, data model, provenance, decisions
+├── docs/       # architecture, deployment, handoff, provenance, decisions
 ├── scripts/    # dev helpers
 └── .env.example
 ```
@@ -60,6 +72,26 @@ npm run dev                               # http://localhost:3000
 1. Enable **Google OAuth** provider (Authentication → Providers).
 2. Add redirect URL `http://localhost:3000/auth/callback`.
 3. Note the **anon key** (web) and **service role key** (API only).
+
+## Production deployment
+
+The production split is:
+
+- **Supabase:** Postgres, pgvector, and Auth
+- **Render:** FastAPI API and Postgres-backed worker
+- **Vercel:** Next.js web app
+
+Follow [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the complete setup. The
+Render API must include:
+
+```text
+ENVIRONMENT=production
+WEB_ORIGIN=https://your-vercel-domain.vercel.app
+ALLOWED_EMAILS=you@example.com,another@example.com
+```
+
+`ALLOWED_EMAILS` is enforced by the API for every protected route. Keep the
+Supabase service-role key, database password, and provider keys on Render only.
 
 ## Testing
 

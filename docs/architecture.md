@@ -1,13 +1,19 @@
 # Architecture
 
-Status: Phase A complete. This document records decisions that matter.
+Status: hosted pilot. This document records decisions that matter.
 
 ## Deployment mode
 
-Single power user, hosted. Not local-first; not multi-tenant SaaS yet.
+Single power user, hosted on Supabase, Render, and Vercel. Not local-first;
+not multi-tenant SaaS yet.
 Every user-owned row carries explicit ownership (`user_id` / `owner_id`) so
 multi-user can be layered on without a rewrite, but no unused SaaS machinery
 (workspaces-as-tenants, billing, social) is built.
+
+The browser runs on Vercel, while Render runs the FastAPI API and
+Postgres-backed worker. Supabase owns Postgres, pgvector, and Auth. Production
+API access is restricted by `ALLOWED_EMAILS`, and `WEB_ORIGIN` is the exact
+Vercel origin used for CORS.
 
 ## Key decisions
 
@@ -16,6 +22,8 @@ multi-user can be layered on without a rewrite, but no unused SaaS machinery
 - Managed Postgres with pgvector on free tier; auth (magic link + Google)
   handled by Supabase Auth. The FastAPI API verifies Supabase JWTs (JWKS,
   ES256/RS256, HS256 fallback) and never sees passwords.
+- The API rejects valid Supabase sessions whose email is not in
+  `ALLOWED_EMAILS`; the service-role key remains server-only.
 - The earlier draft schema modeled workspaces + members for RLS-driven
   tenancy. Dropped: single user makes that indirection pure cost. Ownership is
   now direct `profiles.id` references. RLS remains enabled on sensitive tables
@@ -40,10 +48,12 @@ Introduce Redis only when measured need appears.
 
 - `LLMProvider` → GeminiProvider (google-genai). Structured generation uses
   response_mime_type=json + response_schema.
-- `EmbeddingProvider` → GeminiEmbeddingProvider (text-embedding-004, 768d).
+- `EmbeddingProvider` → GeminiEmbeddingProvider (`gemini-embedding-001`, 768d).
 - `WebSearchProvider` → TavilyProvider, ArxivProvider, OpenAlexProvider.
   Ranking/dedup live in the sources domain, not in providers.
-- `ObjectStorageProvider` → LocalStorageProvider (dev); S3-compatible later.
+- `ObjectStorageProvider` → LocalStorageProvider (dev only). Production PDF
+  uploads remain disabled until an S3-compatible provider is added; Render
+  disks are ephemeral.
 
 No feature module imports an SDK directly.
 
@@ -76,35 +86,34 @@ jobs                                        (Postgres-backed queue)
 
 pgvector HNSW indexes exist on `concepts.summary_embedding` and
 `source_chunks.embedding`; `concepts.name_tsv` is a generated tsvector column
-for lexical search. Semantic (pgvector) + trigram/full-text search wiring lands
-with the Search phase.
+for lexical search.
 
-## What comes next (Phase B onward)
+## Current capabilities
 
-Phase B (Brain) is complete:
+- **Brain and concepts** — graph retrieval, case-insensitive and
+  embedding-assisted dedupe, domain-aware clusters, mastery state, graph
+  inspection, and DAG-validated prerequisite/related edges.
+- **Sources** — URL and note ingestion, trust-based classification,
+  Tavily/arXiv/OpenAlex discovery, ranking, dedupe, extraction, chunking, and
+  Gemini embeddings. PDF ingestion is implemented for local storage only.
+- **Pathways and lessons** — asynchronous structured generation, validated
+  pathway DAGs, on-demand grounded lessons, inline citations, and quizzes.
+- **Review and discovery** — mastery updates, spaced review scheduling,
+  recommendations, portrait snapshots, and feedback events.
+- **Web experience** — Next.js app shell, Supabase SSR sessions, Sigma.js
+  WebGL graph, accessible list view, responsive lesson reader, and shared
+  loading/error states.
 
-- **`GET /api/brain/graph`** — every concept the user has engaged with plus the
-  edges between them, with mastery/state/interest per node.
-- **Concepts module** — create-with-dedupe (case-insensitive canonical reuse;
-  embedding adjudication deferred to Phase C), concept detail with
-  prerequisites/unlocks/related, DAG-validated prerequisite edges
-  (`app/domain/graph.py`, cycle + self-edge rejected at API with `cycle_detected`).
-- **Brain canvas** — Sigma.js WebGL renderer over Graphology: ForceAtlas2
-  layout, hover neighborhood emphasis (unrelated nodes/edges fade), selection
-  with animated camera focus, domain-colored clusters, mastery-state node
-  colors/sizes, zoom controls, domain filter chips.
-- **Inspector** — right panel fetching `/api/concepts/{id}`: mastery bar,
-  difficulty, description, clickable prerequisite/unlock chips (navigates the
-  graph), loading/error states.
-- **Accessibility** — list-view alternative (`List` toggle) rendering the same
-  data as a semantic, keyboard-navigable outline; ARIA progressbar for mastery.
+Integration tests run in CI against a pgvector service container and skip
+locally without `DATABASE_URL`; graph, validation, citation, and source-domain
+logic also have focused unit tests.
 
-Integration tests for all brain/concepts endpoints run in CI against a
-pgvector service container and skip locally without `DATABASE_URL`.
+## Next priorities
 
-Next phases:
-1. **Source infrastructure** — discovery pipeline, ranking model, chunking +
-   embedding jobs, citation model.
-2. **Pathways** — structured generation with DAG validation via
-   `app/domain/graph.py`.
-3. **Grounded learning** — lesson pipeline with claim→source attribution.
+1. Add durable S3-compatible storage with signed/resumable PDF uploads.
+2. Improve review calibration and recommendation evaluation.
+3. Add source search, folders, tags, and re-ingestion/version metadata.
+4. Add deletion/export controls and encryption-at-rest policy for user content.
+
+Social sharing, teams, billing, and a plugin ecosystem remain out of scope
+until the single-user learning loop is measurably useful.
