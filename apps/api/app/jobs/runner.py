@@ -10,14 +10,15 @@ from datetime import UTC, datetime, timedelta
 
 from app.core.logging import setup_logging
 from app.db import session as db_session
-from app.db.models import Job
-from app.db.models.job import JobStatus
+from app.db.models import Job, Source
+from app.db.models.job import JobStatus, JobType
+from app.db.models.source import IngestStatus
 from app.jobs.handlers import (
     handle_lesson_generation,
     handle_pathway_generation,
     handle_source_ingest,
 )
-from app.jobs.queue import claim_next_job
+from app.jobs.queue import claim_next_job, enqueue_job
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,10 @@ async def run_job(job) -> None:
                 attached.status = JobStatus.FAILED
                 attached.last_error = error_message
                 attached.finished_at = datetime.now(UTC)
+                if attached.type == JobType.SOURCE_INGEST:
+                    source = await session.get(Source, attached.payload.get("source_id"))
+                    if source is not None:
+                        source.ingest_status = IngestStatus.FAILED
             else:
                 backoff = 90 if is_rate_limited else min(2 ** attempts * 5, 300)
                 attached.status = JobStatus.PENDING
@@ -108,6 +113,27 @@ async def recover_stuck_jobs() -> int:
             job.attempts = 0
             job.last_error = None
             job.run_after = None
+            recovered += 1
+
+        active_source_jobs = await session.execute(
+            select(Job.payload).where(
+                Job.type == JobType.SOURCE_INGEST,
+                Job.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+            )
+        )
+        active_source_ids = {
+            payload.get("source_id") for payload in active_source_jobs.scalars().all()
+        }
+        pending_sources = await session.execute(
+            select(Source.id).where(Source.ingest_status == IngestStatus.PENDING)
+        )
+        for source_id in pending_sources.scalars().all():
+            if str(source_id) in active_source_ids:
+                continue
+            await enqueue_job(
+                session, "SOURCE_INGEST", {"source_id": str(source_id)},
+                dedupe_key=f"ingest:{source_id}",
+            )
             recovered += 1
 
         await session.commit()

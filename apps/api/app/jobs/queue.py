@@ -28,6 +28,7 @@ async def enqueue_job(
         type=JobType(job_type),
         status=JobStatus.PENDING,
         payload=payload,
+        dedupe_key=dedupe_key,
         run_after=run_after or datetime.now(UTC),
     )
     session.add(job)

@@ -99,6 +99,7 @@ async def _persist_discovered(session: AsyncSession, concept: Concept, candidate
     from sqlalchemy import select as sa_select
 
     from app.db.models.source import SourceOrigin, SourceType
+    from app.jobs.queue import enqueue_job
     from app.modules.sources.dedup import canonicalize_url
 
     result = await session.execute(sa_select(Source).where(Source.url == candidate.url))
@@ -121,6 +122,12 @@ async def _persist_discovered(session: AsyncSession, concept: Concept, candidate
         )
         session.add(source)
         await session.flush()
+
+    if source.ingest_status == IngestStatus.PENDING:
+        await enqueue_job(
+            session, "SOURCE_INGEST", {"source_id": str(source.id)},
+            dedupe_key=f"ingest:{source.id}",
+        )
 
     link = await session.execute(
         sa_select(ConceptSource).where(
