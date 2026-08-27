@@ -21,7 +21,7 @@ export default function PathwayPage({ params }: { params: Promise<{ id: string }
 
   return (
     <div className="relative h-screen overflow-y-auto">
-      <div className="relative mx-auto max-w-3xl p-8 lg:p-14">
+      <div className="relative mx-auto max-w-3xl p-4 sm:p-6 lg:p-14">
         <Link
           href="/app/pathways"
           className="mb-6 inline-flex items-center gap-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"

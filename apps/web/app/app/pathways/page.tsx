@@ -38,7 +38,7 @@ export default function PathwaysPage() {
   return (
     <div className="relative h-screen overflow-y-auto">
 
-      <div className="relative mx-auto max-w-3xl p-8 lg:p-14">
+      <div className="relative mx-auto max-w-3xl p-4 sm:p-6 lg:p-14">
         {/* Atlas header */}
         <Reveal>
           <header className="mb-10 text-center">

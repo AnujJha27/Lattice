@@ -45,7 +45,7 @@ export default function OverviewPage() {
   return (
     <div className="relative h-screen overflow-y-auto">
       {/* Sky behind everything */}
-      <div className="relative p-8 lg:p-12">
+      <div className="relative p-4 sm:p-6 lg:p-12">
         {/* Hero */}
         <Reveal>
           <header className="mb-10 max-w-3xl">
@@ -53,7 +53,7 @@ export default function OverviewPage() {
               <span aria-hidden className="inline-block h-px w-8 bg-[var(--accent)]" />
               Personal observatory
             </p>
-            <h1 className="atlas-title text-6xl leading-[1.05] text-[var(--text-primary)]">
+            <h1 className="atlas-title text-4xl leading-[1.05] text-[var(--text-primary)] sm:text-5xl lg:text-6xl">
               See what you know.
               <br />
               <span className="bg-gradient-to-r from-[var(--accent)] via-[var(--text-primary)] to-[var(--accent)] bg-clip-text text-transparent">
@@ -64,7 +64,7 @@ export default function OverviewPage() {
         </Reveal>
 
         <Reveal delay={0.06} className="mb-5 max-w-5xl">
-          <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-surface)]/80 p-5 shadow-[var(--shadow-md)] backdrop-blur-sm">
+          <section className="flex flex-col items-stretch justify-between gap-4 rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-surface)]/80 p-4 shadow-[var(--shadow-md)] backdrop-blur-sm sm:flex-row sm:items-center sm:p-5">
             <div>
               <p className="eyebrow mb-2">Next move</p>
               <h2 className="atlas-title text-2xl">
@@ -74,7 +74,7 @@ export default function OverviewPage() {
                 {dueReviews.data?.length ? `${dueReviews.data.length} review${dueReviews.data.length === 1 ? "" : "s"} ready to keep your lattice alive.` : "A focused next step keeps momentum better than a crowded dashboard."}
               </p>
             </div>
-            <Link href={dueReviews.data?.[0] ? "/app/review" : recommendations.data?.[0] ? `/app/concepts/${recommendations.data[0].concept_id}` : "/app/brain"} className="btn-brass rounded-md px-5 py-2.5 text-sm font-semibold">
+            <Link href={dueReviews.data?.[0] ? "/app/review" : recommendations.data?.[0] ? `/app/concepts/${recommendations.data[0].concept_id}` : "/app/brain"} className="btn-brass rounded-md px-5 py-2.5 text-center text-sm font-semibold sm:shrink-0">
               {dueReviews.data?.[0] ? "Start review →" : recommendations.data?.[0] ? "Open concept →" : "Add an interest →"}
             </Link>
           </section>
@@ -84,7 +84,7 @@ export default function OverviewPage() {
           {/* Sky snapshot */}
           <Reveal delay={0.08}>
             <SpotlightCard className="h-full">
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 <p className="eyebrow mb-5">Tonight&apos;s sky</p>
                 {brain.isPending ? (
                   <div className="space-y-2" aria-busy="true">
@@ -96,7 +96,7 @@ export default function OverviewPage() {
                     <div className="flex items-baseline gap-5">
                       <CountUp
                         value={concepts}
-                        className="atlas-title text-6xl text-[var(--text-primary)]"
+                        className="atlas-title text-5xl text-[var(--text-primary)] sm:text-6xl"
                       />
                       <motion.span
                         initial={{ opacity: 0 }}
@@ -124,7 +124,7 @@ export default function OverviewPage() {
           {/* Chart a new star */}
           <Reveal delay={0.16}>
             <SpotlightCard className="h-full">
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 <p className="eyebrow mb-5">Chart a new star</p>
                 <AddInterest />
               </div>
@@ -134,7 +134,7 @@ export default function OverviewPage() {
           {/* Instruments */}
           <Reveal delay={0.24} className="md:col-span-2">
             <SpotlightCard>
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 <p className="eyebrow mb-5">Instruments</p>
                 {health.isPending ? (
                   <div className="space-y-2" aria-busy="true">
@@ -179,7 +179,7 @@ export default function OverviewPage() {
 
           <Reveal delay={0.3} className="md:col-span-2">
             <SpotlightCard>
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 <p className="eyebrow mb-5">What to explore next</p>
                 {recommendations.isPending ? (
                   <Shimmer className="h-10" />

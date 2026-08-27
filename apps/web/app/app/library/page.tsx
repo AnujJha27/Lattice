@@ -10,7 +10,7 @@ import { PdfUpload } from "@/components/sources/PdfUpload";
 export default function LibraryPage() {
   return (
     <div className="relative h-screen overflow-y-auto">
-      <div className="relative mx-auto max-w-5xl p-8 lg:p-14">
+      <div className="relative mx-auto max-w-5xl p-4 sm:p-6 lg:p-14">
       <header className="mb-10">
         <p className="eyebrow mb-3">
           <Library className="h-3.5 w-3.5" aria-hidden /> Research library

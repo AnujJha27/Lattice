@@ -38,16 +38,16 @@ export default function BrainPage() {
   const domains = [...new Set((graphData?.nodes ?? []).map((n) => n.domain).filter(Boolean))] as string[];
 
   return (
-    <div className="relative flex h-[calc(100vh-57px)] flex-col">
+    <div className="relative flex h-[calc(100vh-4rem)] flex-col md:h-screen">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] px-5 py-2.5">
-        <h1 className="atlas-title text-lg">My Brain</h1>
-        <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2.5 sm:gap-3 sm:px-5">
+        <h1 className="atlas-title text-base sm:text-lg">My Brain</h1>
+        <span className="hidden font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)] sm:inline">
           {graphData?.nodes.length ?? 0} concepts · {graphData?.edges.length ?? 0} connections
         </span>
 
         {/* Domain filter */}
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by domain">
+        <div className="order-3 flex w-full flex-nowrap items-center gap-1.5 overflow-x-auto pb-0.5 sm:order-none sm:w-auto sm:flex-wrap" role="group" aria-label="Filter by domain">
           <FilterChip active={!domainFilter} onClick={() => setDomainFilter(null)}>
             All
           </FilterChip>
@@ -108,7 +108,7 @@ export default function BrainPage() {
           <summary className="cursor-pointer list-none rounded-lg bg-[var(--accent)] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent-hover)]">
             + Interest
           </summary>
-          <div className="absolute right-0 z-20 mt-2 w-80 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-lg)]">
+          <div className="absolute right-0 z-20 mt-2 w-80 max-w-[calc(100vw-1.5rem)] rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-lg)]">
             <AddInterest />
           </div>
         </details>
@@ -153,7 +153,7 @@ export default function BrainPage() {
         )}
 
         {combineMode && !combine.isPending && (
-          <div className="glass absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-[var(--border-strong)] px-5 py-3 shadow-[var(--shadow-lg)]">
+          <div className="glass absolute bottom-3 left-1/2 z-20 flex max-w-[calc(100%-1rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-xl border border-[var(--border-strong)] px-3 py-2 shadow-[var(--shadow-lg)] sm:bottom-6 sm:gap-3 sm:px-5 sm:py-3">
             {combinePicks.length === 0 && (
               <p className="text-sm text-[var(--text-secondary)]">
                 Pick two stars to fuse…

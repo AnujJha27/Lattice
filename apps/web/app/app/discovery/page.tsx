@@ -13,7 +13,7 @@ export default function DiscoveryPage() {
   const portrait = useQuery({ queryKey: ["discovery", "portrait"], queryFn: () => api<Portrait>("/discovery/portrait") });
   const history = useQuery({ queryKey: ["discovery", "portrait", "history"], queryFn: () => api<History[]>("/discovery/portrait/history") });
   const data = portrait.data;
-  return <div className="relative min-h-screen overflow-y-auto"><div className="relative mx-auto max-w-5xl p-8 lg:p-14">
+  return <div className="relative min-h-screen overflow-y-auto"><div className="relative mx-auto max-w-5xl p-4 sm:p-6 lg:p-14">
     <header className="mb-10"><p className="eyebrow mb-3"><Compass className="h-3.5 w-3.5" aria-hidden /> Discovery</p><h1 className="atlas-title text-3xl">The shape of your curiosity.</h1><p className="mt-3 max-w-xl text-sm leading-relaxed text-[var(--text-secondary)]">Connections, gaps, and new directions inferred from your Brain and review history.</p></header>
     {portrait.isPending ? <p className="text-sm text-[var(--text-secondary)]">Reading your Brain…</p> : portrait.isError ? <p role="alert" className="text-sm text-[var(--danger)]">Couldn&apos;t load your portrait.</p> : data && <>
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{[["Concepts", data.evolution.concepts], ["Mastered", data.evolution.mastered], ["Reviews", data.evolution.reviews], ["Last 30 days", data.evolution.recent_reviews], ["Mastery change", data.evolution.mastery_delta]].map(([label, value]) => <div key={label} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4"><p className="eyebrow">{label}</p><p className="mt-2 text-2xl font-semibold">{value}</p></div>)}</div>

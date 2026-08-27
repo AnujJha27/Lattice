@@ -15,7 +15,7 @@ export default function ReviewPage() {
   });
 
   return (
-    <div className="mx-auto max-w-2xl p-8 lg:p-14">
+    <div className="mx-auto max-w-2xl p-4 sm:p-6 lg:p-14">
       <p className="eyebrow mb-3">Spaced review</p>
       <h1 className="atlas-title text-4xl">Keep the lattice alive.</h1>
       <p className="mt-2 text-sm text-[var(--text-secondary)]">Review what is due; your next interval adapts to each answer.</p>
