@@ -184,6 +184,10 @@ Per **main spec §15–19 + overrides Phase F** — the closing loop `quiz → m
 - **Measurement:** `clicked_mastery_delta` now uses each concept's first recommendation click as its lower time boundary, preventing earlier reviews from inflating the outcome metric.
 - **Checks:** the timestamp-boundary regression passes; full available non-DB API verification is `107 passed`, with Ruff and Python compilation clean.
 
+### Phase 1d CI environment slice — 2026-08-28
+- **Dependency install:** the API workflow now installs the test tools explicitly with pip (`pytest`, `pytest-asyncio`, and `ruff`). The project keeps these under PEP 735 `dependency-groups`, which pip does not install through the unsupported `.[dev]` extra syntax.
+- **Checks:** workflow YAML parses and the dependency-group/workflow command alignment check passes. The disposable Postgres/pgvector run remains the authoritative integration gate.
+
 ### Phase 1 sub-phase status — 2026-08-27
 - **1a Deterministic portrait inputs:** portrait input hashes now include concept labels/domains, edge direction/type/confidence, active goals, and algorithm/config versions. Edge fields remain ordered so prerequisite direction cannot be lost.
 - **1b Evidence gates:** concept creation/enrollment alone no longer counts as recent learning activity; one review attempt is counted once; portraits stay sparse until 10 meaningful interactions; recency at the current instant is handled correctly. This keeps sparse/new portraits from inventing identity, Emerging Threads, or Frontiers.
@@ -371,7 +375,7 @@ Per **main spec §15–19 + overrides Phase F** — the closing loop `quiz → m
 ## 7. How to Run (first-time & every-session)
 
 ### Env
-- **Root** `D:\fun stuff\lattice\.env` — real values live here; API reads it via `parents[4]`
+- **Root** `D:\fun stuff\lattice\.env` — keep real values local only; API reads it via `parents[4]`
   ```
   SUPABASE_URL=replace_me
   SUPABASE_ANON_KEY=replace_me
@@ -385,7 +389,7 @@ Per **main spec §15–19 + overrides Phase F** — the closing loop `quiz → m
   ENVIRONMENT=development
   LOG_LEVEL=INFO
   ```
-- **Web** `apps/web/.env.local`
+- **Web** `apps/web/.env.local` — keep real values local only
   ```
   NEXT_PUBLIC_SUPABASE_URL=replace_me
   NEXT_PUBLIC_SUPABASE_ANON_KEY=replace_me
