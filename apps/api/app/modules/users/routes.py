@@ -35,9 +35,10 @@ async def read_me(
     user: CurrentUser = CurrentUserDep,
     session: AsyncSession = Depends(get_session),
 ):
-    profile = await ensure_profile(session, user)
+    profile = await ensure_profile(session, user.id, user.email)
     return ProfileOut(
         id=profile.id,
         display_name=profile.display_name,
         onboarded=profile.onboarded_at is not None,
     )
+

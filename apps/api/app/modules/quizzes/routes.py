@@ -1,14 +1,16 @@
 import uuid
 from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.auth import CurrentUser, CurrentUserDep
 from app.core.errors import NotFound
 from app.db.models import Concept, Quiz, Review, UserConcept
-from app.db.models.learning import MasteryState
 from app.db.session import get_session
+from app.modules.reviews.service import apply_review
 
 router = APIRouter(tags=["quizzes"])
 
@@ -19,6 +21,7 @@ class QuizOut(BaseModel):
 
 class QuizAnswer(BaseModel):
     answer: int = Field(ge=0)
+    confidence: int = Field(default=3, ge=1, le=5)
     response_ms: int | None = Field(default=None, ge=0, le=3_600_000)
 
 
@@ -31,7 +34,8 @@ class GeneratedQuiz(BaseModel):
 @router.post("/concepts/{concept_id}/quiz", response_model=QuizOut)
 async def create_quiz(concept_id: uuid.UUID, user: CurrentUser = CurrentUserDep, session: AsyncSession = Depends(get_session)):
     concept = (await session.execute(select(Concept).where(Concept.id == concept_id))).scalar_one_or_none()
-    if concept is None: raise NotFound("concept", concept_id)
+    if concept is None:
+        raise NotFound("concept", concept_id)
     cached = (await session.execute(select(Quiz).where(
         Quiz.user_id == user.id, Quiz.concept_id == concept_id,
         Quiz.created_at >= datetime.now(UTC) - timedelta(hours=24),
@@ -65,28 +69,24 @@ async def create_quiz(concept_id: uuid.UUID, user: CurrentUser = CurrentUserDep,
     )
     quiz = Quiz(user_id=user.id, concept_id=concept_id, question=generated.question,
                 options=generated.options, answer=generated.answer, rationale=generated.rationale)
-    session.add(quiz); await session.commit()
+    session.add(quiz)
+    await session.commit()
     return QuizOut(id=quiz.id, question=quiz.question, options=quiz.options)
 
 @router.post("/quizzes/{quiz_id}/answer")
+@router.post("/quizzes/{quiz_id}/attempts")
 async def answer_quiz(quiz_id: uuid.UUID, payload: QuizAnswer, user: CurrentUser = CurrentUserDep, session: AsyncSession = Depends(get_session)):
     quiz = (await session.execute(select(Quiz).where(Quiz.id == quiz_id, Quiz.user_id == user.id))).scalar_one_or_none()
-    if quiz is None: raise NotFound("quiz", quiz_id)
+    if quiz is None:
+        raise NotFound("quiz", quiz_id)
     if payload.answer >= len(quiz.options):
         return {"correct": False, "rationale": "Choose one of the listed options.", "next_review_at": None}
     correct = payload.answer == quiz.answer
     state = (await session.execute(select(UserConcept).where(UserConcept.user_id == user.id, UserConcept.concept_id == quiz.concept_id))).scalar_one_or_none()
     if state is not None:
-        previous_mastery = float(state.mastery_score)
-        state.attempt_count += 1
-        state.review_count += 1
-        state.successful_reviews = state.successful_reviews + 1 if correct else 0
-        state.mastery_score = max(0, min(100, float(state.mastery_score) + (12 if correct else -8)))
-        state.state = MasteryState.MASTERED if state.mastery_score >= 85 else MasteryState.FAMILIAR if state.mastery_score >= 60 else MasteryState.LEARNING
-        state.last_tested_at = datetime.now(UTC)
-        state.next_review_at = datetime.now(UTC) + timedelta(days=min(60, max(1, (1 + state.successful_reviews) * (2 if correct else 1))))
+        previous_mastery = apply_review(state, correct=correct, confidence=payload.confidence)
         session.add(Review(user_id=user.id, concept_id=quiz.concept_id, quiz_id=quiz.id,
-                           correct=correct, confidence=3, previous_mastery=previous_mastery,
+                           correct=correct, confidence=payload.confidence, previous_mastery=previous_mastery,
                            mastery_after=float(state.mastery_score), response_ms=payload.response_ms))
         await session.commit()
     return {"correct": correct, "rationale": quiz.rationale, "next_review_at": state.next_review_at if state else None}

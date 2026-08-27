@@ -79,6 +79,11 @@ function SourceRow({ source }: { source: SourceItem }) {
             {source.authors.length > 0 && <span>{source.authors.slice(0, 3).join(", ")}</span>}
             {source.published && <span>{source.published.slice(0, 4)}</span>}
           </p>
+          {source.ingest_error && (
+            <p role="alert" className="mt-2 max-w-2xl break-words text-xs text-[var(--danger)]">
+              {source.ingest_error}
+            </p>
+          )}
         </div>
       </div>
 

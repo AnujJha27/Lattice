@@ -70,6 +70,16 @@
   }
 }
 
+@media (max-width: 639px) {
+  .portrait-caption {
+    display: none;
+  }
+
+  .portrait-mobile-secondary {
+    display: none;
+  }
+}
+
 body {
   background: var(--bg-base);
   color: var(--text-primary);

@@ -10,7 +10,7 @@ import type { Attributes } from "graphology-types";
 import { useBrainGraph } from "@/hooks/useBrain";
 import { AddInterest } from "@/components/brain/AddInterest";
 import { brainUI, useBrainStore, visibleNodes } from "@/lib/store/brain";
-import { addBrainEdges } from "@/lib/brainGraph";
+import { activeBrainNode, addBrainEdges } from "@/lib/brainGraph";
 import type { Settings } from "sigma/settings";
 import { MASTERY_COLORS, nodeSize, domainColor, type BrainNode } from "@/types/brain";
 
@@ -320,7 +320,8 @@ export function BrainCanvas() {
       nodeReducer: (node, data) => {
         const state = brainUI();
         const res = { ...data };
-        const active = state.hoveredId ?? state.selectedId;
+        const active = activeBrainNode(graph, state.hoveredId, state.selectedId, !showingOverview);
+        if (!showingOverview) res.forceLabel = true;
         if (active && active !== node) {
           if (!adjacency.get(active)?.has(node)) {
             res.color = `${res.baseColor}33`; // fade unrelated
@@ -342,7 +343,7 @@ export function BrainCanvas() {
       },
       edgeReducer: (edge, data) => {
         const state = brainUI();
-        const active = state.hoveredId ?? state.selectedId;
+        const active = activeBrainNode(graph, state.hoveredId, state.selectedId, !showingOverview);
         if (!active) return data;
         const [a, b] = graph.extremities(edge);
         const relevant = a === active || b === active;

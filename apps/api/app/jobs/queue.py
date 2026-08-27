@@ -21,8 +21,12 @@ async def enqueue_job(
     if dedupe_key:
         existing = await session.execute(select(Job).where(Job.dedupe_key == dedupe_key))
         found = existing.scalar_one_or_none()
-        if found is not None and found.status not in (JobStatus.FAILED, JobStatus.CANCELLED):
-            return found
+        if found is not None:
+            if found.status in (JobStatus.PENDING, JobStatus.RUNNING):
+                return found
+            # Keep terminal history while releasing the unique key for a new run.
+            found.dedupe_key = None
+            await session.flush()
 
     job = Job(
         type=JobType(job_type),

@@ -1,5 +1,5 @@
 # Lattice — Handoff Document
-**Last updated:** 2026-08-26 23:40 IST — + brain clustering regression (see §4 #16)  
+**Last updated:** 2026-08-28 — roadmap, source-ingestion, and learning-loop recheck  
 **Branch:** `main` · **Repo:** `D:\fun stuff\lattice`  
 **Dev URLs:** `http://localhost:8000` (API) → `http://localhost:3000` (web)  
 **DB:** Supabase `bkqlshzbxjulkredbdyq` (ap-northeast-1) · pgvector `vector` extension enabled  
@@ -30,7 +30,7 @@
 - **Factory:** `providers/factory.py` — `get_llm_provider()` → OpenRouter when `OPENROUTER_API_KEY+OPENROUTER_MODEL` set, else Gemini
 - **Auth:** Supabase Auth (magic-link + Google OAuth). API verifies JWT via `PyJWKClient` → JWKS `ES256/RS256` + HS256 fallback (`SUPABASE_JWT_SECRET`). `profiles.id → auth.users.id` (FK declared only in migration). `ensure_profile(session, user_id, email)` auto-mirrors auth user; called by concept/pathway/source/lesson routes and by `ensure_user_concept` to prevent `FK user_concepts_user_id_profiles` violations.
 - **Errors/Observability:** unified `{error:{code,message}, request_id}`; `RequestContextMiddleware` (`x-request-id` + JSON logs + access log); `/api/health` reports llm/embeddings/web_search/academic
-- **CI:** `.github/workflows/ci.yml` — web typecheck+build, api `ruff+pytest`, alembic offline SQL check; api service uses `pgvector/pgvector:pg16` + `DATABASE_URL`, `SUPABASE_JWT_SECRET`
+- **CI:** `.github/workflows/ci.yml` — web typecheck+build, api `ruff+pytest` against a migrated `pgvector/pgvector:pg16` service, and alembic offline SQL check; the API job supplies a minimal Supabase auth stub for migrations.
 - **Env:** `.env.example` (root) + `apps/web/.env.local` (NEXT_PUBLIC_*). Root `.env` is the source of truth for the API.
 
 ### Phase B — Brain ✅
@@ -39,6 +39,7 @@
 - **API:** `GET /api/brain/graph`, `POST /api/concepts`, `GET /api/concepts/{id}` (prereqs/dependents/related), `POST /api/concepts/{id}/edges`, `POST /api/concepts/combine` (BirdsEyes Fuse)
 - **Frontend:** Sigma.js + EdgeCurve, ForceAtlas2, Louvain communities, NebulaSky shader sky
   - `components/brain/BrainCanvas.tsx` — curved edges (`EdgeCurveProgram`), cinematic entrance, hover ink-plate labels (`defaultDrawNodeHover`: ink bg + brass border + parchment text), degree-weighted hub sizes, community→domain ring layout, size-aware cluster radii, centroid repulsion (minSep per-cluster), drag-to-move, focus pan (no aggressive zoom), highlight dull on pick/hover, `store.subscribe(refresh)`
+  - Focused-island labels now remain visible for low-mastery concepts and after drill-down with a prior selection; stale overview hover IDs are ignored so the reducer cannot blank the focused island.
   - `components/ui/NebulaSky.tsx` — R3F WebGL `Canvas` with `dpr=[1,1.5]`, fbm nebula fragment shader (ink/indigo/brass), parallax on mouse, star layer (500-700 points, calmer twinkle `0.8–1.0`, large blur removed), `powerPreference: high-performance`, `antialias: false`; now only on page-level (sidebar is CSS nebula to avoid multi-context throttling/flicker)
   - `components/ui/Shimmer.tsx` — `Shimmer` + `ShimmerRows` (brass sweep, no `animate-pulse` left anywhere)
   - Store `lib/store/brain.ts` — `hoveredId/selectedId/viewMode/domainFilter/combineMode/combinePicks` + `neighborsOf/visibleNodes`
@@ -72,8 +73,8 @@
 
 ## 3. Current Dev Health
 - **Backend:** running at `http://127.0.0.1:8000`; `GET /api/health` shows `openrouter:z-ai/glm-5.2:free`, `web_search:tavily`, `academic:[arxiv,openalex]`; pathway generation cycling after 429s is healthy (sticky rotation now recovers)
-- **Frontend:** `apps/web` — `npm run typecheck` ✅, `npm run build` ⚠️ (intermittent `.next` cache corruption when builds run while dev server is live — symptom: `vendor-chunks/motion.js` missing, `routes-manifest.json` ENOENT). **Fix:** stop dev, `Remove-Item -Recurse -Force .next`, `npm run dev`
-- **Tests:** `apps/api` — 50 passed, 8 skipped (integration needs `DATABASE_URL`) — all green when checked last
+- **Frontend:** `apps/web` — direct TypeScript check ✅; production build is not runnable in this WSL1 checkout because the npm wrapper rejects WSL1 and the direct Next binary lacks its optional Linux SWC package. Run the build from WSL2/Windows after dependencies are installed; no application compile error has been observed here.
+- **Tests:** `apps/api` non-DB suite (excluding the local TestClient hang) — 108 passed; portrait/visual/golden tests — 33 passed; portrait/learning integration — 11 skipped without disposable `DATABASE_URL`; focused web checks — 5 JavaScript files pass plus compiled Brain checks — 3 passed; direct TypeScript typecheck and Python compilation pass; full-repo Ruff is clean
 
 ---
 
@@ -101,12 +102,12 @@
 | 14 | **Usage pipeline double counts** | Two `AIGeneration` inserts per lesson | Single snapshot row per attempt (success or failure) via `generation_row`; 429 no-choices cycling; `choices` missing → cycle; duplicate rows deleted (4 removed) |
 | 15 | **Delivery flow / milestones / Observability** | No single view | This handoff + `ai_generations`/`jobs` health queries (see §7) |
 
-**Still in `TODO` (needs your verification + we haven't fixed yet in code):**
-- **Brain clustering (P0):** revert domain islands → Louvain `resolution 0.65` (or embedding k-means) so 56 `NULL`-domain concepts split by graph structure, not one island. Verify after `.next` nuke + `npm run dev` restart that Formal Verification / Category Theory / Diffusion / Psych are 4–5 separated islands (cross wires ghosted `0.10`, not hidden). The 12 EIS concepts (`%Randles%`, `%Bode%`, etc.) were already deleted (21 concepts remain) but the layout still shows one hairball until this fix lands.
-- Re-verify Brain clustering after next pathway generation (bridges need the first 1–2 pathway gens to embed concepts and create `RELATED_TO` edges — `FV ↔ Category Theory` will only appear once their embeddings are within 0.35 cosine and both have `summary_embedding`; threshold tightened `0.55 → 0.35` and 8 loose bridges deleted).
-- Confirm no remaining flicker on: pathway `GENERATING` badge/shimmer, lesson generating orbit, fuse overlay.
-- Verify Fuse now hits `/api/concepts/combine` (not doubled) — quick `POST /api/concepts/combine` should 401 not 405.
-- Verify `.next` no longer corrupts (only run `npm run build` with dev stopped; builds from WSL previously clobbered Windows `node_modules/.next`).
+**Still requiring runtime verification:**
+- **Local test-client note:** this checkout's Python 3.14 + AnyIO `BlockingPortal` hangs even with a minimal FastAPI `TestClient`; the pure API suite passes when `test_api.py` and the disposable-DB module are excluded. CI's Python 3.12 job remains authoritative for the TestClient/integration path.
+- **Brain visual check:** after a clean dev restart, confirm Louvain islands remain separated and focused-island labels stay visible after selecting a concept in the overview.
+- **Production redeploy check:** confirm failed source/embedding jobs become `FAILED` or backoff `PENDING`, never stranded `RUNNING`; confirm the root status response and `/api/health`.
+- **Disposable database CI:** run the migration plus integration job against Postgres/pgvector.
+- **Browser coverage:** run responsive screenshots and the portrait interaction flow in a browser-capable environment.
 
 ---
 
@@ -114,12 +115,11 @@
 
 | Priority | Task | Where | Done when |
 |----------|------|-------|-----------|
-| **P0** | **Verify lesson generation end-to-end after hard-refresh** — Formal Verification chapter already persisted (`a3d65c89…` GROUNDED, 4 paras); also try a fresh generate | `app/app/concepts/[id]/page.tsx`, `modules/lessons/*` | No `intuition` crash; book sections render |
-| **P0** | **Confirm Brain after Fuse** — `POST /api/concepts/combine` → 201 (429→ cycles to `nemotron-*`), fused node appears, `Brain graph` updates | `app/app/brain/page.tsx` combine bar, `modules/concepts/routes.py` | Fused concept in graph with two `RELATED_TO` edges |
-| **P1** | **Tune Brain clustering visually** — check the screenshot cluster overlap; adjust `ringRadius`, `minSep`, `gravity` (code hasknobs) | `BrainCanvas.tsx` | ML vs Psych vs Category Theory clusters breathing, FV beside Category Theory |
-| **P1** | **Fix any remaining flicker reports** — note the route | Everywhere with `Shimmer` / `NebulaSky` | Zero `animate-pulse` left (verified); no report after refresh |
-| **P2** | **Delete pathway deletes orphan concepts** — spec change requested (was: pathway_private orphans only). Wired as: concepts with zero other pathways/edges/lessons are removed | `modules/pathways/routes.py` `DELETE /pathways/{id}` | Delete deletes pathway + orphans; woven-in concepts survive |
-| **P2** | **Phase F: Mastery + Review + Recommendations** — the spec's §F. See §6 below | New: `modules/mastery`, `modules/reviews`, `modules/recommendations` | Scheduled review queue live; recommendations feed Overview |
+| **P0** | **Redeploy the current API fixes** — worker rollback safety, remote PDF extraction, and root status route | Render API | `/` and `/api/health` return 200; failed jobs settle cleanly |
+| **P0** | **Run the disposable Postgres/pgvector CI job** — apply head migrations, then run integration tests | `.github/workflows/ci.yml` | Migration and integration job pass in CI |
+| **P1** | **Run browser portrait verification** — sparse, mature, inspector, island drill-down, and mobile layout | Profile/Brain | Main interaction and responsive checks pass |
+| **P2** | **Verify the institutional visual fallback in deployment** | `modules/visual_sources/providers/*` | The Met fallback is reachable and preserves rights/provenance fields in a real refresh |
+| **P2** | **Start Phase 6 only after the release gates** — themes/export/generated editions | `docs/FUTURE_STEPS.md` §§58–60 | Generated artwork remains optional and non-authoritative |
 
 ---
 
@@ -161,6 +161,212 @@ Per **main spec §15–19 + overrides Phase F** — the closing loop `quiz → m
 - Embedding drift (concept vs chunk spaces) — keep 768-dim consistent, validate `model: gemini-embedding-001`
 
 ---
+
+### Phase F sub-phase status — 2026-08-27
+- **F2a Review transition:** quiz answers and manual reviews now share one deterministic mastery/scheduling transition; the due-review path no longer fails on an undefined previous score.
+- **F2b Review-due state:** elapsed schedules are marked `REVIEW_DUE` without changing mastery; submitting the review returns to the score-derived state. Migration `0008_review_due_state` adds the durable enum value, and review responses now expose the state.
+- **F4a Quiz contract:** quiz attempts are accepted at the roadmap path `POST /api/quizzes/{id}/attempts`; `/answer` remains as a compatibility alias. Confidence is persisted with each review.
+- **F5a Deterministic ranking:** recommendations now rank only from goal, interest, prerequisite readiness, recency, neighborhood, and mastery factors. LLM output no longer changes the final order.
+- **F5b Outcome measurement:** recommendation evaluation now counts mastery changes only for reviews at or after the first click on that concept, excluding pre-click history.
+- **F6a Review session:** the Review page now runs one due concept at a time through the existing quiz and attempt APIs, exposes rationale/next-review feedback, advances through the captured queue, and shows a completion state.
+- **Checks:** focused review/recommendation tests `4 passed`; Ruff clean; non-DB API tests `61 passed`; full app-client tests remain blocked by the existing TestClient starting the real Postgres worker from the root `.env`.
+- **Checks updated:** the new browser-side session test passes with Node’s built-in runner; the Review page transpiles cleanly. `npm run typecheck` remains unavailable in WSL1 and direct `tsc` exceeds the local timeout.
+- **F7a Integration coverage:** added learning-loop and portrait persistence tests covering quiz generation, review scheduling, brain mastery, recommendation factors, snapshot creation, Discovery parity, and non-structural refresh reuse. The fixture checks database writability before auth-table DDL and skips managed/non-disposable databases safely.
+- **Checks updated:** non-DB API tests `81 passed`; focused review tests `3 passed`; the integration module reports `10 skipped` without `DATABASE_URL`; Python compilation, full-repo Ruff, and Alembic offline SQL through `0008_review_due_state` are clean. A configured managed Supabase run previously failed on protected `auth` schema permissions, so it was not retried against shared data.
+- **Next sub-phase:** the CI job now applies the head migrations and runs `test_brain_api.py` against disposable Postgres/pgvector; after that run, review calibration and the remaining responsive/E2E work.
+
+### F6b Brain next-action slice — 2026-08-28
+- **Surface:** Brain now shows a compact, horizontally scrollable next-action strip: due reviews take priority; when none are due, the first three deterministic recommendations are shown.
+- **Telemetry:** recommendation links reuse the existing click endpoint, so Brain navigation contributes to recommendation evaluation alongside Overview navigation.
+- **Checks:** the browser-independent Brain prompt regression passes; all five focused web checks and direct TypeScript pass. Browser interaction and responsive screenshots remain external gates.
+
+### F5b Recommendation-outcome slice — 2026-08-28
+- **Measurement:** `clicked_mastery_delta` now uses each concept's first recommendation click as its lower time boundary, preventing earlier reviews from inflating the outcome metric.
+- **Checks:** the timestamp-boundary regression passes; full available non-DB API verification is `107 passed`, with Ruff and Python compilation clean.
+
+### Phase 1 sub-phase status — 2026-08-27
+- **1a Deterministic portrait inputs:** portrait input hashes now include concept labels/domains, edge direction/type/confidence, active goals, and algorithm/config versions. Edge fields remain ordered so prerequisite direction cannot be lost.
+- **1b Evidence gates:** concept creation/enrollment alone no longer counts as recent learning activity; one review attempt is counted once; portraits stay sparse until 10 meaningful interactions; recency at the current instant is handled correctly. This keeps sparse/new portraits from inventing identity, Emerging Threads, or Frontiers.
+- **1c Snapshot discipline:** classification additions/removals produce evolution changes; insignificant input drift reuses the current snapshot, while algorithm/config version changes still create a new one.
+- **1d Golden fixtures:** deterministic A–E fixtures now cover sparse/new, mathematics specialist, cross-domain Bridge, emerging Formal Methods, and dormant Graph Theory behavior against the real portrait builder. The integration module also covers the full sparse-to-emerging snapshot flow and Discovery parity.
+- **1e Debug tooling:** authenticated development-only `/api/portrait/debug` reports the exact factor contributions, selection thresholds, evidence suppression, and visual ranking factors without mutating snapshots or exposing the report in production.
+- **1f Configurable scoring profile:** portrait thresholds, normalization targets, and scoring weights now live in a typed `PortraitConfig`; the active profile is included in input hashes so tuning produces a new immutable snapshot. The default profile preserves the existing scoring behavior.
+- **Checks:** portrait scoring tests `17 passed`; golden portrait tests `5 passed`; portrait service Ruff clean. The next verification is the learning-loop/portrait integration suite against disposable Postgres/pgvector.
+
+### Phase 2 sub-phase status — 2026-08-27
+- **2a Anonymous form and accessible text:** the Profile uses a non-identifying human silhouette by default and exposes anchors, bridges, frontiers, emerging threads, and dormant threads in a visible textual portrait index.
+- **2b Deterministic composition:** stable concept-derived layout helpers now live in a browser-safe module, with keyboard-selectable SVG regions and identifier-anchored positions that survive sibling insertion/reordering. The SVG is exposed as an accessible group with visible keyboard focus cues so its region buttons remain discoverable; the textual portrait index remains the complete equivalent. Portrait visual-source selection and inspector types are narrowed correctly.
+- **2c Product boundary:** no user-photo URL, upload, or storage path is part of the core portrait. The renderer stays anonymous; sourced imagery is handled by Phase 3, and generated artwork remains deferred to Phase 6.
+- **2c Responsive foundation:** Profile uses a side inspector from large tablets upward, a sticky bottom inspector below that breakpoint, and hides the caption plus secondary visual regions below 640px while preserving the human form, primary touch regions, and full textual index. Screenshot/E2E coverage remains a separate verification task.
+- **Checks:** focused web tests `4 passed`; direct TypeScript typecheck passes; API non-DB tests `77 passed`. The removed photo-settings path has no remaining callers.
+
+### Phase 3 sub-phase status — 2026-08-27
+- **3a Provider and rights gates:** Wikimedia Commons metadata is retained with provider, canonical source, license, creator, dimensions, and rights class; unknown/restricted candidates are rejected before composition.
+- **3b Ranking, deduplication, and caching:** visual ranking is deterministic across relevance, aesthetic fit, rights, and quality, with canonical-URL and image-URL deduplication before the limit is applied. Rights-cleared image bytes are fetched with an 8 MB cap, stored by SHA-256 through the existing object-storage protocol, and exposed through a scoped cached-image URL.
+- **3b Async refresh:** visual search and image caching now run through the durable `PORTRAIT_VISUAL_REFRESH` Postgres job; requests are deduplicated by user and snapshot, the API returns `202` with a job ID, and the web client polls for the completed portrait.
+- **3c Attribution and inspection:** selected visual regions expose provider, rights, creator, institution, date, attribution, and provenance links in the Profile inspector without covering the artwork with labels; their accessible labels also announce the represented concept, source title, and rights class.
+- **3d Institutional fallback:** The Metropolitan Museum of Art Open Access API is queried only when Wikimedia yields fewer than two candidates; public-domain metadata and HTTPS image URLs are checked before candidates enter the shared ranking/cache path. The API source is documented in [component provenance](component-provenance.md).
+- **Checks:** visual-source tests `9 passed`; targeted Ruff, full-repo Ruff, and the focused web tests remain clean. Alembic offline SQL includes migration `0007_portrait_visual_refresh_job`. Broader provider expansion and cached derivative generation remain deferred until production usage justifies them.
+
+### Phase 5 sub-phase status — 2026-08-27
+- **5a Snapshot comparison:** Discovery history cards are now keyboard-selectable and show the selected snapshot’s version, narrative, and recorded changes. The existing immutable snapshot IDs remain the selection boundary.
+- **5b Timeline UI:** history is presented as a responsive vertical timeline with version markers, mastered/domain counts, and a selected-snapshot detail panel.
+- **5c1 Continuity motion:** keyed SVG regions now enter and leave through `AnimatePresence` while identifier-derived positions preserve established landmarks between portrait refreshes and snapshot changes; category-qualified keys prevent collisions when a concept appears in multiple region types, and visual-source regions use the same transition boundary.
+- **5c2 Reduced motion:** `useReducedMotion()` switches the region transition to zero duration without changing content, keyboard targets, or region ordering; the existing global reduced-motion CSS remains in place for CSS effects.
+- **Checks:** focused web history/layout/review tests `3 passed`; direct TypeScript typecheck passes.
+
+### Phase 4 sub-phase status — 2026-08-27
+- **4b Discovery/Brain parity:** Discovery uses the same Portrait Model and now makes every surfaced node or thread actionable: nodes open their concept, threads open their first associated concept, and empty threads fall back to the Brain.
+- **4c1 Failure handling:** portrait computation now rolls back the active database transaction before loading the previous immutable snapshot, so fallback hydration can safely reuse the session after a failed computation. Existing visual-source failures remain isolated per asset and preserve the current portrait.
+- **4c1 Renderer fallback:** the Profile isolates artwork failures behind `PortraitErrorBoundary`; the accessible textual portrait index remains available when the SVG renderer fails.
+- **4c1 Refresh feedback:** Profile and Discovery now report failed portrait/visual refreshes inline while explicitly preserving the last successful reading.
+- **4c1 Image fallback:** a missing cached image now falls back to its fetched source URL at the SVG region boundary.
+- **4c1 Image failure state:** if both the cached and fetched source URLs fail, the visual region keeps its data-bound frame and shows a readable source-unavailable state.
+- **4c2 Async visual refresh:** Profile starts a durable user/snapshot-deduplicated visual-refresh job and keeps the last successful portrait until the worker completes; failed jobs surface the existing inline error without replacing the portrait.
+- **4c3 Inspector navigation:** visual regions expose provenance, their first associated concept, and Brain navigation; thread regions expose their first associated concept as “Explore thread” plus Brain navigation.
+- **4c3 Responsive foundation:** the Profile layout adapts inspector placement at the same `lg` breakpoint that creates the side-by-side layout, and reduces decorative captioning for narrow viewports without changing the underlying portrait data.
+- **4c4 First-user feedback boundary:** Discovery portrait feedback now calls the shared `ensure_profile` path before writing `PortraitFeedback`, so a new authenticated user can use “Useful” or “Not me” without a profile foreign-key failure.
+- **4d Privacy-safe analytics:** portrait events persist only the event type plus snapshot/element identifiers; Profile, Discovery, visual regions, refreshes, navigation, hover, and history selection are wired. No concept text or photo telemetry is sent.
+- **4e1 Async portrait recomputation:** Profile and Discovery read the latest persisted snapshot; `POST /api/portrait/refresh` queues `PORTRAIT_REFRESH`, and the authenticated status endpoint returns the completed snapshot while preserving the previous one during work or failure. Recompute failures now remain `FAILED` instead of being mislabeled as successful fallback reads.
+- **4e2 Refresh idempotency:** portrait refresh jobs now deduplicate by authenticated user through the durable queue, while terminal jobs release their key so a later refresh remains possible.
+- **4c5 Log de-duplication:** Uvicorn and `uvicorn.error` records now stop after their shared JSON handler, preventing duplicate startup/error lines while application access logs continue through the root logger.
+- **4c6 Request error boundary:** unhandled request exceptions are logged with request ID and 500 timing before the original exception is re-raised, avoiding a masking `UnboundLocalError`.
+- **4c7 Source failure feedback:** the Library now surfaces the latest source-ingest job error (including upstream `403` and provider `429` details) without changing the durable source record or retry behavior.
+- **4c8 Browser contract:** Playwright covers Profile keyboard activation/inspector navigation and Discovery’s shared portrait facts/history selection with mocked API responses; the test-only auth bypass is unavailable in production. Chromium execution is wired into CI, while local WSL1 browser execution remains environment-blocked.
+- **Checks:** portrait fallback regression passes; full API, focused web, TypeScript, compilation, and full-repo Ruff checks remain clean. The local production-build probe is environment-blocked by WSL1/missing optional SWC. Browser contract execution is wired for CI; responsive screenshot baselines remain.
+
+### Roadmap alignment audit — 2026-08-27
+- **On track:** Phases F, 1a–f, 2a–b, 3a–d, 4b, 4c1–8, 4d, 4e1–2, and 5a–c have corresponding code and focused checks.
+- **Intentional deferrals:** user-photo mode is excluded from the core product; broader provider expansion beyond Wikimedia + The Met, cached derivative generation, responsive visual regression baselines, CI browser execution, and Phase 6 generated-art editions remain open roadmap work.
+- **Next:** execute the updated CI integration job against disposable Postgres/pgvector, then add browser screenshot baselines and finish responsive visual regression before advanced art.
+
+### Roadmap and verification recheck — 2026-08-27
+- **Confirmed alignment:** the implementation matches the split phases in `docs/FUTURE_STEPS.md`: F, 1a–f, 2a–b, 3a–d, 4b, 4c1–8, 4d, 4e1–2, and 5a–c have code plus focused checks.
+- **Scope confirmed:** no portrait-photo upload/storage path exists in the core implementation; visual assets are fetched, rights-gated, cached where permitted, and attributed. Generated art remains deferred to Phase 6.
+- **Fresh evidence:** full-repo Ruff passed; non-DB API `84 passed`; portrait/visual/golden `24 passed`; web `3 passed`; direct TypeScript and Python compilation passed; Alembic offline SQL through `0009_portrait_events` passed; Brain stale-hover regression is covered by the compiled TypeScript test; DB integration remains `11 skipped` locally pending disposable Postgres/pgvector.
+- **Next slice:** execute the updated CI integration job in disposable Postgres/pgvector, then close responsive visual regression, browser E2E, and final Phase 4 release polish. Do not start Phase 6 art before those gates.
+
+### Phase 4c release-polish slice — 2026-08-27
+- **Responsive breakpoint:** the inspector is side-by-side at `lg` and sticky-bottom only below `lg`, matching the documented desktop/tablet/mobile layout intent.
+- **Asset resilience:** visual regions now fall back from cached bytes to the fetched source URL, then to a readable non-image state if both fail.
+- **Interaction parity:** Profile inspector actions now cover provenance, related concept/thread, and Brain navigation for the selected portrait element.
+- **Checks:** direct TypeScript, focused web tests (`3 passed`), full-repo Ruff, and the existing API suites remain clean. Browser screenshots still require a browser runner; no Playwright dependency was added to the local checkout.
+
+### Phase 3b/4c async visual-refresh slice — 2026-08-27
+- **Durable work:** added migration `0007_portrait_visual_refresh_job`, worker handler registration, authenticated job-status polling, and client-side completion handling.
+- **Failure isolation:** provider and cache failures remain contained at the asset boundary; the last successful portrait remains available while refresh work is pending or failed.
+- **Checks:** visual-source tests (`7 passed`), full non-DB API suite (`79 passed`), Alembic offline SQL, full Ruff, and direct TypeScript all pass.
+
+### Phase F2b review-due slice — 2026-08-27
+- **Durable state:** added `REVIEW_DUE` to the mastery enum and migration `0008_review_due_state`.
+- **Scheduler behavior:** the due queue marks elapsed schedules as due; review submission clears the due state through the shared deterministic transition.
+- **Checks:** focused review tests (`3 passed`), full non-DB API suite (`81 passed`), Alembic offline SQL, Ruff, Python compilation, and direct TypeScript all pass.
+
+### Integration migration/telemetry slice — 2026-08-27
+- **Migration gate:** CI now creates the minimal `auth.users`/`auth.uid()` Supabase stub, applies `alembic upgrade head` to its pgvector service, then runs the integration suite. This catches migration drift that metadata-only `create_all` cannot catch.
+- **Telemetry smoke:** the integration module now posts a real `portrait_viewed` event for a new user; the route mirrors the profile before inserting the FK-backed event.
+- **Checks:** portrait analytics unit tests `3 passed`; non-DB API `86 passed`; integration module `11 skipped` locally without `DATABASE_URL`; CI is the authoritative disposable-Postgres run.
+
+### Source-ingestion deployment-reliability slice — 2026-08-27
+- **Worker failure boundary:** job type, ID, and payload are snapshotted before rollback; upstream/embedding failures can now be persisted without triggering SQLAlchemy `MissingGreenlet` from expired ORM attributes. Failed source jobs update their source status, while retryable jobs retain the existing backoff.
+- **Remote PDFs:** URL-backed PDFs now use the already-installed `pypdf` parser, sharing the extraction path with stored uploads. The old dependency error was a code-path rejection, not a missing package.
+- **Render evidence:** build/startup and `/api/health` succeeded. ACM, Wikipedia, CHOP, PubMed, and World Scientific returned upstream `403`; Gemini embeddings returned `429 RESOURCE_EXHAUSTED`. Those remain provider/source-access constraints, but they are now contained by the job boundary instead of crashing the worker.
+- **Checks:** the new runner/PDF regression tests pass (`3 passed`); non-DB API suite is `87 passed`; Ruff and Python compilation pass. Web TypeScript passes, the compiled Brain regression passes (`2 passed`), and the focused JavaScript checks pass (`3 passed`).
+
+### Uvicorn log de-duplication slice — 2026-08-27
+- **Observed issue:** Uvicorn startup/error records propagated through both its own JSON handler and the root handler, producing duplicate structured lines in Render logs.
+- **Fix:** Uvicorn and `uvicorn.error` now stop propagation after the shared JSON handler; access records continue through the application root logger.
+- **Checks:** focused logging/worker/source/portrait suite passes (`18 passed`); full non-DB API suite passes (`104 passed`); the Render source/embedding failures remain the separate redeploy and provider-quota gates above. The local disposable Postgres gate remains unrun because the Docker daemon is unavailable.
+
+### Request error-boundary logging slice — 2026-08-27
+- **Observed issue:** an unhandled request exception left `response` unset in `RequestContextMiddleware`, so the access log could raise `UnboundLocalError` and hide the original failure.
+- **Fix:** middleware now logs the request ID and 500 timing, then re-raises the original exception.
+- **Checks:** middleware regression passes; full API verification remains the same apart from the added test.
+
+### Source-ingest stage-fidelity slice — 2026-08-27
+- **Observed issue:** the source library exposed a `FETCHED` state, but URL and object-storage ingestion skipped it and reported only after extraction.
+- **Fix:** successful remote, stored-byte, and inline-note reads now mark the source `FETCHED` before parsing/conversion; extraction, chunking, and embedding retain their existing transitions.
+- **Checks:** focused source/worker/middleware/logging tests pass (`4 passed`); full available non-DB API suite passes (`106 passed`), with Ruff and Python compilation clean.
+
+### CI migration-gate slice — 2026-08-27
+- **Observed issue:** the migration sanity step piped Alembic output into `test -s /dev/stdin`, which closed the producer early and reproduced `BrokenPipeError` locally.
+- **Fix:** the workflow now writes generated SQL to `$RUNNER_TEMP/lattice-alembic.sql` and checks the completed file, preserving the full Alembic process output.
+- **Checks:** the replacement command generated all migrations through `0010_portrait_refresh_job` locally; disposable Postgres execution remains a CI-only gate because the local Docker daemon is unavailable.
+
+### Source failure-feedback slice — 2026-08-27
+- **Observed issue:** failed source rows showed only a generic `Failed` badge even though the worker had already persisted the actionable upstream/provider error.
+- **Fix:** the Library response includes the newest source-ingest error via one batched job lookup; the web row renders it inline for both terminal failures and retrying jobs.
+- **Checks:** the source output regression preserves the error field; the full non-DB API suite (`106 passed`), TypeScript, Ruff, and compilation remain clean.
+
+### Focused-island label regression slice — 2026-08-27
+- **Root cause:** a concept selected in the overview stayed selected when an island was opened; the focused reducer then faded every non-neighbor label.
+- **Fix:** focused mode now uses only a valid live hover as its label-fading anchor, while preserving normal selection behavior in the overview.
+- **Checks:** compiled Brain regression tests pass (`3 passed`), web TypeScript passes, focused JavaScript checks pass (`3 passed`), API non-DB suite passes (`87 passed`), Ruff and Python compilation pass.
+
+### Service-root release-polish slice — 2026-08-27
+- **Host surface:** `/` now returns a small JSON service/status response and points to `/api/health`; Render’s root probe no longer receives a misleading 404.
+- **Checks:** root-route regression passes (`1 passed`); the broader API, Ruff, Python compilation, web TypeScript, and focused web checks remain clean.
+
+### Developer portrait-debug slice — 2026-08-27
+- **Read-only tooling:** development-only `GET /api/portrait/debug` exposes the exact deterministic factor contributions and selection thresholds for portrait classifications, plus the four visual ranking factors.
+- **Safety boundary:** the endpoint requires the normal authenticated user and returns 404 in production; it does not create or mutate a snapshot.
+- **Checks:** debug endpoint and scoring tests pass (`2 passed`); non-DB API suite is `89 passed`; Ruff, Python compilation, web TypeScript, and focused web checks remain clean.
+
+### Institutional visual-provider fallback slice — 2026-08-27
+- **Fallback:** added The Met public-domain adapter and invoke it only when Wikimedia returns fewer than two ranked candidates, preserving the existing ranking, rights, cache, and attribution boundary.
+- **Rights boundary:** candidates require The Met's `isPublicDomain` flag, a title, and an HTTPS image URL; no user image is uploaded and no generated image is introduced.
+- **Checks:** visual-source tests `9 passed`; full non-DB API suite `91 passed`; Ruff, Python compilation, web TypeScript, and focused web checks remain clean. Browser visual regression and production-provider verification remain deployment gates.
+
+### Stable portrait-layout slice — 2026-08-27
+- **Stability:** concept, thread, and visual-source positions now derive from their identifiers rather than sibling index/count, so existing regions retain their positions as a portrait changes.
+- **Checks:** the layout regression passes; focused web tests are now `4 passed`, and direct TypeScript remains clean.
+
+### Portrait accessibility slice — 2026-08-27
+- **Semantics:** changed the interactive portrait SVG from image-only semantics to an accessible group, preserving keyboard-focusable region buttons and the textual portrait index; added visible focus rings for concept and visual-source regions.
+- **Checks:** the accessibility regression passes; browser assistive-technology verification remains an external gate.
+
+### Responsive portrait slice — 2026-08-27
+- **Mobile policy:** below 640px, CSS hides secondary bridges, frontiers, threads, orbit decoration, and visual sources; primary regions, the human form, and the complete textual index remain available.
+- **Checks:** responsive source regression, focused web tests, and TypeScript pass; browser screenshot verification remains an external gate.
+
+### Visual-source accessibility slice — 2026-08-27
+- **Semantics:** visual regions now announce the represented concept, source title, and rights class to assistive technology while retaining the visual inspector for full provenance.
+- **Checks:** the accessibility regression passes; browser screen-reader verification remains an external gate.
+
+### Async portrait-recompute slice — 2026-08-27
+- **Durable work:** added migration `0010_portrait_refresh_job`, worker registration, and authenticated `GET /api/portrait/refresh/{job_id}` polling for `PORTRAIT_REFRESH`.
+- **Read path:** Profile and Discovery serve the latest valid persisted snapshot; both surfaces expose the refresh control, refresh work runs outside the request, the web hook updates the portrait only after success, and failed recomputation preserves the last valid snapshot without reporting false success.
+- **Checks:** API non-DB suite `99 passed`; focused visual/portrait suite `33 passed`; Ruff, Python compilation, offline Alembic SQL through `0010`, direct TypeScript, compiled Brain checks (`3 passed`), and focused JavaScript checks pass. Integration still requires disposable Postgres/pgvector; browser E2E remains external.
+- **CI alignment:** the web CI job now runs these browser-independent portrait/layout/Brain regressions before its production build; no browser package or image-upload path was added.
+
+### Private cached-visual transport slice — 2026-08-27
+- **Privacy boundary:** cached visual bytes now verify the authenticated snapshot owner; the Profile renderer loads them with the bearer token and uses the public rights-cleared source URL as fallback.
+- **Checks:** owner-scope regression, portrait accessibility regression, and direct TypeScript checks pass; browser screenshot and cross-origin runtime verification remain external.
+
+### Open-access source handoff slice — 2026-08-27
+- **Ingestion URL:** OpenAlex results now prefer an HTTPS open-access PDF, then an HTTPS open-access landing page, before falling back to the existing primary/publisher or DOI URL. DOI and arXiv identifiers remain unchanged for deduplication.
+- **Checks:** provider regression and full API non-DB suite (`99 passed`) pass; blocked publisher URLs still require permitted alternatives or an external provider/API.
+
+### Portrait transition key-isolation slice — 2026-08-27
+- **Transition identity:** anchor, frontier, emerging-thread, and visual-source regions now use category-qualified React keys, so repeated concept/source IDs cannot collide inside the shared `AnimatePresence` boundary.
+- **Checks:** the accessibility/key regression passes; direct TypeScript and the focused web checks remain clean.
+
+### First-user portrait feedback slice — 2026-08-27
+- **Write boundary:** Discovery feedback now mirrors the authenticated user into `profiles` before inserting the FK-backed feedback row, reusing the existing profile-initialization helper.
+- **Checks:** focused portrait/worker/provider/visual tests pass (`23 passed`); Ruff and Python compilation pass.
+
+### Durable visual-refresh dedupe slice — 2026-08-27
+- **Idempotency:** active visual refreshes now deduplicate by authenticated user and snapshot; terminal jobs release their unique key while retaining history, allowing a later refresh without multiplying provider requests or permanently blocking the button.
+- **Checks:** affected API tests pass (`26 passed`); the non-DB API suite excluding the local TestClient hang passes (`102 passed`); Ruff and Python compilation pass.
+
+### Race-safe portrait-refresh slice — 2026-08-27
+- **Idempotency:** portrait recomputation now uses a user-scoped durable dedupe key instead of scanning an arbitrary 20 active jobs, so concurrent requests share one job and terminal history does not block future refreshes.
+- **Checks:** the refresh route regressions and non-DB API suite pass (`102 passed`); Ruff and Python compilation pass.
+
+### Portrait rendering decision slice — 2026-08-27
+- **Decision:** documented SVG as the canonical semantic portrait renderer and Sigma/WebGL as the separate Brain renderer in [portrait-rendering.md](portrait-rendering.md).
+- **Boundary:** the document records identifier-anchored stability, CSS mobile simplification, reduced-motion behavior, cached/source image fallback, and the no-upload/no-generated-art canonical boundary.
+- **Checks:** documentation is aligned with the existing focused web and TypeScript checks; browser screenshot and assistive-technology verification remain external gates.
 
 ## 7. How to Run (first-time & every-session)
 
@@ -237,6 +443,11 @@ npm run dev   # http://localhost:3000 ; Ctrl+Shift+R after deploy
 | `.next` corruption `vendor-chunks/motion.js` / `routes-manifest.json` | Running `npm run build` from WSL while Windows dev lived on same `.next` | Stop dev before builds; dev uses `typecheck` only; WSL `rm -rf .next` fix | Rule: never build while dev is live on the other OS mount |
 | Lesson 404 embedding + 502 discovery | See above: embedding model + OpenAlex `mailto` + arXiv `http` + `RankedCandidate` float/str + lesson route catching | All fixed: embedding `001`, OpenAlex sanitizes `?` punctuation and drops `mailto`, arXiv `https+follow_redirects`, `factors: dict[str,Any]`, lesson error → `AppError` 502 | Discovery is now: Tavily `POST` 200, arXiv `https` 200, OpenAlex 200 |
 | `intuition` crash on concept page | Old hook cached 202 response as lesson + model typo `keheading` → validation failure | Guard `lesson.data?.content?.intuition`, `Shimmer` + post-persisted larger lesson (`a3d65c89…` GROUNDED) already in DB; `_coerce_payload` fuzzy snap at 0.8 + `output_tokens` bump; add `select` not needed | Hard-refresh after deploy; if crash persists, paste new stack line (old one was `:226:70` inside `ConceptPage`) |
+| Render worker `MissingGreenlet` after a source/embedding error | `rollback()` expires the merged `Job`; the exception path then read `attached.type`, `attached.payload`, or `attached.id` outside SQLAlchemy's async greenlet | Snapshot primitive job metadata before rollback and use those snapshots for failure bookkeeping/logging; add runner regression coverage | Redeploy and confirm failed jobs become `FAILED`/backoff `PENDING`, never stranded `RUNNING` |
+| Source ingestion gets repeated `403` responses | Publisher/reference sites block server-side bot requests or the Render egress IP; `response.raise_for_status()` correctly surfaces the upstream denial | Treat as source-access/provider constraints; prefer permitted/API-backed source URLs and let the durable job record the failure | Do not interpret a `403` as a missing Python dependency |
+| Remote PDF says parser dependency is missing | The URL branch rejected every `application/pdf` response before invoking `pypdf`; Render did install `pypdf` | Shared `extract_pdf()` path now handles URL and object-storage bytes | Test one public PDF and one uploaded PDF after redeploy |
+| Gemini embedding `429 RESOURCE_EXHAUSTED` | Google API quota/billing limit was exceeded; this is independent of Render startup | Existing 90-second retry/backoff contains the job; restore quota/billing or configure an available embedding provider before bulk ingestion | Avoid bulk re-ingestion while the quota is exhausted |
+| Render primary URL returns `HEAD / -> 404` | The API had no root route; the service health endpoint is `/api/health` | Root now returns service/status metadata and points to `/api/health` | Redeploy and confirm the Render probe sees 200 |
 
 ---
 
@@ -306,6 +517,7 @@ lattice/
    - Pathways → Generate → `Charting` badge + shimmer are smooth, no pulse
    - Concept → Generate grounded lesson → orbit+ sweep (no pulse), then book sections render (check `a3d65c89…` is already there for Formal Verification)
    - Fuse: select two stars → Fuse → confirm 201 in Network, 429s cycle silently to next model
+   - Profile → Find sourced visuals: confirm the request returns a visual-refresh job, the old portrait stays visible while it runs, and the completed sources appear without a full portrait recomputation
 
 ---
 

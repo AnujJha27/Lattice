@@ -1,4 +1,4 @@
-"""Embedding provider abstraction. Default implementation: Gemini text-embedding-004."""
+"""Embedding provider abstraction. Default implementation: Gemini embedding-001."""
 from typing import Protocol
 
 from google import genai

@@ -31,19 +31,21 @@ async def handle_source_ingest(session: AsyncSession, payload: dict) -> dict:
         ) as client:
             response = await client.get(source.url)
             response.raise_for_status()
+        source.ingest_status = IngestStatus.FETCHED
         content_type = response.headers.get("content-type", "")
         if "text/html" not in content_type and "text/plain" not in content_type and "application/pdf" not in content_type:
             raise ValueError(f"unsupported content type: {content_type}")
         if "application/pdf" in content_type:
-            raise ValueError("PDF extraction requires a PDF parser dependency")
-        text = extract_text(response.text)[:MAX_TEXT_CHARS]
+            text = extract_pdf(response.content)[:MAX_TEXT_CHARS]
+        else:
+            text = extract_text(response.text)[:MAX_TEXT_CHARS]
     elif source.storage_path and (source.metadata_ or {}).get("content_type") == "application/pdf":
-        from io import BytesIO
-        from pypdf import PdfReader
         from app.providers.storage import make_storage
         data = await make_storage().get(source.storage_path)
-        text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(data)).pages)[:MAX_TEXT_CHARS]
+        source.ingest_status = IngestStatus.FETCHED
+        text = extract_pdf(data)[:MAX_TEXT_CHARS]
     else:
+        source.ingest_status = IngestStatus.FETCHED
         text = str((source.metadata_ or {}).get("content", ""))[:MAX_TEXT_CHARS]
     if len(text) < 200:
         raise ValueError("page contained too little readable text to ingest")
@@ -97,6 +99,14 @@ def hashlib_sha256(text: str) -> str:
     import hashlib
 
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def extract_pdf(data: bytes) -> str:
+    from io import BytesIO
+
+    from pypdf import PdfReader
+
+    return "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(data)).pages)
 
 
 async def handle_pathway_generation(session: AsyncSession, payload: dict) -> dict:
@@ -201,3 +211,28 @@ async def handle_lesson_generation(session: AsyncSession, payload: dict) -> dict
         "sections": len(out.content.sections),
         **stats,
     }
+
+
+async def handle_portrait_visual_refresh(session: AsyncSession, payload: dict) -> dict:
+    """Fetch and cache portrait visuals without holding open the API request."""
+    from app.core.auth import CurrentUser
+    from app.modules.portrait.service import get_portrait_snapshot
+    from app.modules.visual_sources.service import refresh_visual_sources
+
+    user = CurrentUser(id=uuid.UUID(payload["user_id"]))
+    snapshot_id = uuid.UUID(payload["snapshot_id"])
+    model = await get_portrait_snapshot(session, user, snapshot_id)
+    if model is None:
+        raise ValueError(f"portrait snapshot {snapshot_id} not found")
+    refreshed = await refresh_visual_sources(session, user, model)
+    return {"snapshot_id": str(snapshot_id), "visual_count": len(refreshed.visual_sources)}
+
+
+async def handle_portrait_refresh(session: AsyncSession, payload: dict) -> dict:
+    """Recompute and persist a portrait outside the request lifecycle."""
+    from app.core.auth import CurrentUser
+    from app.modules.portrait.service import get_portrait
+
+    user = CurrentUser(id=uuid.UUID(payload["user_id"]))
+    model = await get_portrait(session, user, recompute=True, fallback_on_error=False)
+    return {"snapshot_id": model.snapshot_id}

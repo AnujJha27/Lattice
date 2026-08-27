@@ -12,12 +12,19 @@ from app.db.models.learning import (
     UserConcept,
 )
 from app.db.models.lesson import AIGeneration, Lesson, LessonSource, PromptVersion
+from app.db.models.portrait import (
+    PortraitEvent,
+    PortraitEventType,
+    PortraitFeedback,
+    PortraitFeedbackKind,
+    PortraitSnapshot,
+)
+from app.db.models.quiz import Quiz
+from app.db.models.recommendation import RecommendationEvent, RecommendationEventType
+from app.db.models.review import Review
 from app.db.models.source import ConceptSource, Source, SourceChunk
 from app.db.models.user import Profile
-from app.db.models.quiz import Quiz
-from app.db.models.review import Review
-from app.db.models.recommendation import RecommendationEvent, RecommendationEventType
-from app.db.models.portrait import PortraitFeedback, PortraitFeedbackKind, PortraitSnapshot
+from app.db.models.visual import PortraitVisual, VisualAsset
 
 __all__ = [
     "Base",
@@ -44,6 +51,10 @@ __all__ = [
     "RecommendationEvent",
     "RecommendationEventType",
     "PortraitSnapshot",
+    "PortraitEvent",
+    "PortraitEventType",
     "PortraitFeedback",
     "PortraitFeedbackKind",
+    "VisualAsset",
+    "PortraitVisual",
 ]

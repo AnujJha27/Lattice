@@ -22,6 +22,16 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         started = time.perf_counter()
         try:
             response = await call_next(request)
+        except Exception:
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
+            ACCESS_LOG.exception(
+                "%s %s -> 500 (%sms)",
+                request.method,
+                request.url.path,
+                elapsed_ms,
+                extra={"request_id": request_id},
+            )
+            raise
         finally:
             request_id_ctx.reset(token)
         elapsed_ms = round((time.perf_counter() - started) * 1000, 1)

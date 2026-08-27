@@ -6,6 +6,15 @@ type GraphLike = {
   addEdge: (source: string, target: string) => unknown;
 };
 
+export function activeBrainNode(
+  graph: Pick<GraphLike, "hasNode">,
+  hoveredId: string | null,
+  selectedId: string | null,
+  focusedIsland = false,
+): string | null {
+  return [hoveredId, focusedIsland ? null : selectedId].find((id) => id !== null && graph.hasNode(id)) ?? null;
+}
+
 /** Add only drawable edges; community detection must see these first. */
 export function addBrainEdges(graph: GraphLike, edges: BrainEdge[]): void {
   for (const { source, target } of edges) {

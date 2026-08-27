@@ -1,11 +1,11 @@
 """Recommendation telemetry for ranking evaluation."""
+import enum
 import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Index, Numeric, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
-import enum
 
 from app.db.base import Base, UUIDPrimaryKeyMixin
 

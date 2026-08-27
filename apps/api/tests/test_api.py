@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, root
 
 
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
+
+
+def test_root_route_is_registered_for_host_health_checks():
+    assert any(getattr(route, "path", None) == "/" and route.name == "root" for route in app.routes)
+    assert asyncio.run(root()) == {"service": "lattice-api", "status": "ok", "health": "/api/health"}
 
 
 def test_health_ok(client: TestClient):

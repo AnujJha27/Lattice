@@ -21,7 +21,21 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
       - run: npm run typecheck
+      - name: Run browser-independent regression checks
+        run: |
+          node test/portraitAccessibility.test.js
+          node test/portraitHistory.test.js
+          node test/portraitLayout.test.js
+          node test/reviewSession.test.js
+          node test/brainPrompt.test.js
+          brain_check_dir="$(mktemp -d)"
+          node_modules/.bin/tsc --target ES2022 --module commonjs --moduleResolution node --skipLibCheck --esModuleInterop --outDir "$brain_check_dir" lib/brainGraph.ts test/brainGraph.test.ts
+          NODE_PATH="$(pwd)/node_modules" node "$brain_check_dir/test/brainGraph.test.js"
       - run: npm run build
+      - name: Install Chromium for portrait browser checks
+        run: node_modules/.bin/playwright install --with-deps chromium
+      - name: Run portrait browser contract checks
+        run: npm run e2e
 
   api:
     name: Backend — lint & tests
@@ -52,6 +66,14 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
+      - name: Prepare Supabase auth stub
+        env:
+          PGPASSWORD: test
+        run: >-
+          psql --host=localhost --username=postgres --dbname=lattice_test
+          --set=ON_ERROR_STOP=1
+          --command 'CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$; CREATE TABLE auth.users (id uuid PRIMARY KEY);'
+      - run: alembic upgrade head
       - run: ruff check app tests
       - run: pytest -q
 
@@ -68,4 +90,7 @@ jobs:
         run: pip install -e .
       - name: Verify migrations apply offline (SQL generation)
         working-directory: apps/api
-        run: alembic upgrade head --sql | test -s /dev/stdin && echo "migration SQL generated"
+        run: |
+          migration_sql="$RUNNER_TEMP/lattice-alembic.sql"
+          alembic upgrade head --sql > "$migration_sql"
+          test -s "$migration_sql"

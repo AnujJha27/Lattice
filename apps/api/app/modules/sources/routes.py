@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, CurrentUserDep
 from app.core.errors import NotFound
-from app.db.models import Concept, ConceptSource, Source, SourceChunk
+from app.db.models import Concept, ConceptSource, Job, Source, SourceChunk
+from app.db.models.job import JobStatus, JobType
 from app.db.models.source import IngestStatus, SourceOrigin, SourceType
 from app.db.session import get_session
 from app.modules.sources.dedup import canonicalize_url, dedupe_key
@@ -28,8 +29,8 @@ router = APIRouter(tags=["sources"])
 async def create_note(payload: SourceNote, user: CurrentUser = CurrentUserDep,
                       session: AsyncSession = Depends(get_session)):
     """Save a note/transcript as a first-class library source and index it."""
-    from app.modules.users.routes import ensure_profile
     from app.jobs.queue import enqueue_job
+    from app.modules.users.routes import ensure_profile
 
     await ensure_profile(session, user.id, user.email)
     source = Source(
@@ -59,9 +60,9 @@ async def upload_source(file: UploadFile = File(...), user: CurrentUser = Curren
     if len(data) > 25 * 1024 * 1024:
         from fastapi import HTTPException
         raise HTTPException(status_code=413, detail="PDF must be 25 MB or smaller")
+    from app.jobs.queue import enqueue_job
     from app.modules.users.routes import ensure_profile
     from app.providers.storage import make_storage
-    from app.jobs.queue import enqueue_job
 
     await ensure_profile(session, user.id, user.email)
     key = f"uploads/{uuid.uuid4()}.pdf"
@@ -162,16 +163,31 @@ async def accept_source(
 @router.get("/sources", response_model=list[SourceOut])
 async def list_sources(user: CurrentUser = CurrentUserDep, session: AsyncSession = Depends(get_session)):
     rows = await session.execute(select(Source).where(or_(Source.owner_id == user.id, Source.owner_id.is_(None))).order_by(Source.created_at.desc()).limit(200))
+    sources = rows.scalars().all()
+    ingest_errors = {}
+    if sources:
+        jobs = await session.execute(
+            select(Job)
+            .where(
+                Job.type == JobType.SOURCE_INGEST,
+                Job.payload["source_id"].as_string().in_([str(source.id) for source in sources]),
+            )
+            .order_by(Job.updated_at.desc())
+        )
+        for job in jobs.scalars().all():
+            source_id = str(job.payload.get("source_id"))
+            if source_id not in ingest_errors:
+                ingest_errors[source_id] = None if job.status == JobStatus.SUCCEEDED else job.last_error
     out = []
-    for s in rows.scalars().all():
+    for s in sources:
         count = await session.scalar(
             select(func.count()).select_from(SourceChunk).where(SourceChunk.source_id == s.id)
         )
-        out.append(_to_out(s, int(count or 0)))
+        out.append(_to_out(s, int(count or 0), ingest_errors.get(str(s.id))))
     return out
 
 
-def _to_out(s: Source, chunk_count: int) -> SourceOut:
+def _to_out(s: Source, chunk_count: int, ingest_error: str | None = None) -> SourceOut:
     return SourceOut(
         id=str(s.id),
         title=s.title,
@@ -182,6 +198,7 @@ def _to_out(s: Source, chunk_count: int) -> SourceOut:
         authors=s.authors or [],
         published=s.publication_date,
         ingest_status=s.ingest_status.value,
+        ingest_error=ingest_error,
         chunk_count=chunk_count,
         created_at=s.created_at.isoformat() if s.created_at else None,
     )

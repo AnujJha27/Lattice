@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Brain, Compass, Home, Library, Repeat, Route, Sparkles } from "lucide-react";
+import { LogOut, Brain, Compass, Home, Library, Repeat, Route, Sparkles, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 
@@ -14,6 +14,7 @@ const NAV = [
   { href: "/app/library", label: "Library", icon: Library },
   { href: "/app/review", label: "Review", icon: Repeat },
   { href: "/app/discovery", label: "Discovery", icon: Compass },
+  { href: "/app/profile", label: "Profile", icon: UserRound },
 ] as const;
 
 export function Sidebar() {

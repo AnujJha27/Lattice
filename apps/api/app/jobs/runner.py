@@ -8,6 +8,8 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import httpx
+
 from app.core.logging import setup_logging
 from app.db import session as db_session
 from app.db.models import Job, Source
@@ -16,6 +18,8 @@ from app.db.models.source import IngestStatus
 from app.jobs.handlers import (
     handle_lesson_generation,
     handle_pathway_generation,
+    handle_portrait_refresh,
+    handle_portrait_visual_refresh,
     handle_source_ingest,
 )
 from app.jobs.queue import claim_next_job, enqueue_job
@@ -28,6 +32,8 @@ HANDLERS = {
     "SOURCE_INGEST": handle_source_ingest,
     "PATHWAY_GENERATION": handle_pathway_generation,
     "LESSON_GENERATION": handle_lesson_generation,
+    "PORTRAIT_REFRESH": handle_portrait_refresh,
+    "PORTRAIT_VISUAL_REFRESH": handle_portrait_visual_refresh,
 }
 
 
@@ -43,10 +49,13 @@ async def run_job(job) -> None:
         attached = await session.merge(job)
         # Snapshot before the try: after a rollback these expire and touching
         # them would lazy-load outside the greenlet (MissingGreenlet).
+        job_id = attached.id
+        job_type = attached.type
+        payload = dict(attached.payload)
         attempts = attached.attempts
         max_attempts = attached.max_attempts
         try:
-            result = await handler(session, attached.payload)
+            result = await handler(session, payload)
             attached.result = result
             attached.status = JobStatus.SUCCEEDED
             attached.progress = 1.0
@@ -58,12 +67,17 @@ async def run_job(job) -> None:
             # Rate limits need far longer waits than transient errors: free
             # tiers are typically per-minute windows.
             is_rate_limited = "429" in error_message or "Too Many Requests" in error_message
-            if attempts >= max_attempts:
+            is_permanent_http = (
+                isinstance(exc, httpx.HTTPStatusError)
+                and 400 <= exc.response.status_code < 500
+                and exc.response.status_code not in (408, 429)
+            )
+            if attempts >= max_attempts or is_permanent_http:
                 attached.status = JobStatus.FAILED
                 attached.last_error = error_message
                 attached.finished_at = datetime.now(UTC)
-                if attached.type == JobType.SOURCE_INGEST:
-                    source = await session.get(Source, attached.payload.get("source_id"))
+                if job_type == JobType.SOURCE_INGEST:
+                    source = await session.get(Source, payload.get("source_id"))
                     if source is not None:
                         source.ingest_status = IngestStatus.FAILED
             else:
@@ -75,7 +89,7 @@ async def run_job(job) -> None:
             await session.commit()
             logger.warning(
                 "job %s failed (attempt %s/%s): %s",
-                attached.id, attempts, max_attempts, error_message,
+                job_id, attempts, max_attempts, error_message,
             )
 
 

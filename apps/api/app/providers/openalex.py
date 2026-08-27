@@ -27,10 +27,11 @@ class OpenAlexProvider:
             published_raw = work.get("publication_date")
             primary = (work.get("primary_location") or {}).get("landing_page_url")
             doi = (work.get("doi") or "").replace("https://doi.org/", "") or None
+            open_access_url = _open_access_url(work)
             hits.append(
                 SearchHit(
                     title=work.get("title") or "",
-                    url=primary or work.get("doi") or "",
+                    url=open_access_url or primary or work.get("doi") or "",
                     snippet=(work.get("abstract_inverted_index") is not None and "") or "",
                     published=(
                         datetime.strptime(published_raw, "%Y-%m-%d").date()
@@ -49,3 +50,15 @@ class OpenAlexProvider:
                 )
             )
         return hits
+
+
+def _open_access_url(work: dict) -> str | None:
+    locations = [work.get("best_oa_location"), *(work.get("locations") or [])]
+    for location in locations:
+        if not isinstance(location, dict):
+            continue
+        for key in ("pdf_url", "landing_page_url"):
+            url = location.get(key)
+            if isinstance(url, str) and url.startswith("https://"):
+                return url
+    return None

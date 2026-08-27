@@ -11,6 +11,9 @@ node_modules/
 .next/
 *.tsbuildinfo
 out/
+test-results/
+playwright-report/
+blob-report/
 
 # Env & secrets
 .env

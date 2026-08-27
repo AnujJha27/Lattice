@@ -25,6 +25,7 @@ class MasteryState(enum.StrEnum):
     LEARNING = "LEARNING"
     FAMILIAR = "FAMILIAR"
     MASTERED = "MASTERED"
+    REVIEW_DUE = "REVIEW_DUE"
 
 
 class GoalStatus(enum.StrEnum):

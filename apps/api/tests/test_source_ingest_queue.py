@@ -1,10 +1,13 @@
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 
 from app.db.models import Concept, Source
+from app.db.models.source import IngestStatus, SourceOrigin, SourceType
 from app.jobs.queue import enqueue_job
 from app.modules.lessons.context import _persist_discovered
+from app.modules.sources.routes import _to_out
 from app.modules.sources.schemas import SourceCandidate
 
 
@@ -60,3 +63,47 @@ async def test_enqueue_job_persists_dedupe_key():
     job = await enqueue_job(session, "SOURCE_INGEST", {"source_id": "source"}, dedupe_key="ingest:source")
 
     assert job.dedupe_key == "ingest:source"
+
+
+@pytest.mark.asyncio
+async def test_enqueue_job_allows_a_new_run_after_terminal_dedupe_job():
+    from app.db.models import Job
+    from app.db.models.job import JobStatus, JobType
+
+    previous = Job(
+        type=JobType.PORTRAIT_VISUAL_REFRESH,
+        status=JobStatus.SUCCEEDED,
+        payload={"snapshot_id": "old"},
+        dedupe_key="portrait-visuals:user:snapshot",
+    )
+    session = _Session([previous])
+
+    job = await enqueue_job(
+        session,
+        JobType.PORTRAIT_VISUAL_REFRESH.value,
+        {"snapshot_id": "new"},
+        dedupe_key="portrait-visuals:user:snapshot",
+    )
+
+    assert job is not previous
+    assert previous.dedupe_key is None
+    assert job.dedupe_key == "portrait-visuals:user:snapshot"
+
+
+def test_source_output_exposes_ingest_error():
+    source = SimpleNamespace(
+        id=uuid4(),
+        title="Blocked source",
+        url="https://example.com/source",
+        source_type=SourceType.OTHER,
+        origin=SourceOrigin.DISCOVERED,
+        publisher=None,
+        authors=[],
+        publication_date=None,
+        ingest_status=IngestStatus.FAILED,
+        created_at=None,
+    )
+
+    output = _to_out(source, 0, "HTTPStatusError: 403 Forbidden")
+
+    assert output.ingest_error == "HTTPStatusError: 403 Forbidden"

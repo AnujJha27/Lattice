@@ -29,5 +29,9 @@ def setup_logging(level: str = "INFO") -> None:
 
     # Align uvicorn / uvicorn.access with our format.
     for name in ("uvicorn", "uvicorn.error"):
-        logging.getLogger(name).handlers = [handler]
+        logger = logging.getLogger(name)
+        logger.handlers = [handler]
+        # The records already have an application handler; propagation would
+        # emit startup/error lines a second time through the root handler.
+        logger.propagate = False
     logging.getLogger("uvicorn.access").handlers = []

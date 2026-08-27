@@ -26,7 +26,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
-EMBEDDING_DIM = 768  # Gemini text-embedding-004
+EMBEDDING_DIM = 768  # Gemini embedding-001
 
 
 class ConceptScope(enum.StrEnum):

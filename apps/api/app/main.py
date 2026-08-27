@@ -50,3 +50,8 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+@app.get("/", include_in_schema=False)
+async def root() -> dict[str, str]:
+    return {"service": "lattice-api", "status": "ok", "health": "/api/health"}

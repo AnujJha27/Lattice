@@ -1,14 +1,21 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { List, Network } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import { BrainListView } from "@/components/brain/BrainListView";
 import { Inspector } from "@/components/brain/Inspector";
 import { AddInterest } from "@/components/brain/AddInterest";
 import { useBrainStore } from "@/lib/store/brain";
 import { useBrainGraph, useCombineConcepts } from "@/hooks/useBrain";
+import { brainPromptItems } from "@/lib/brainPrompt.js";
 import { Loader2, Sparkles, X } from "lucide-react";
 import { motion } from "motion/react";
+
+type Recommendation = { concept_id: string; name: string; score: number; reason: string; factors?: Record<string, number> };
+type DueReview = { concept_id: string; name: string; mastery_score: number };
 
 // Sigma.js touches WebGL globals at import time — browser-only.
 const BrainCanvas = dynamic(
@@ -34,8 +41,17 @@ export default function BrainPage() {
   const toggleCombine = useBrainStore((s) => s.toggleCombine);
   const { data: graphData } = useBrainGraph();
   const combine = useCombineConcepts();
+  const dueReviews = useQuery({
+    queryKey: ["reviews", "due"],
+    queryFn: () => api<DueReview[]>("/reviews/due"),
+  });
+  const recommendations = useQuery({
+    queryKey: ["recommendations"],
+    queryFn: () => api<Recommendation[]>("/recommendations"),
+  });
 
   const domains = [...new Set((graphData?.nodes ?? []).map((n) => n.domain).filter(Boolean))] as string[];
+  const promptItems = brainPromptItems(dueReviews.data ?? [], recommendations.data ?? []);
 
   return (
     <div className="relative flex h-[calc(100vh-4rem)] flex-col md:h-screen">
@@ -113,6 +129,39 @@ export default function BrainPage() {
           </div>
         </details>
       </div>
+
+      <nav aria-label="Next learning move" className="flex min-h-12 items-center gap-2 overflow-x-auto border-b border-[var(--border-subtle)] px-3 py-2 sm:px-5">
+        <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">Next</span>
+        {dueReviews.isPending && recommendations.isPending ? (
+          <span className="text-xs text-[var(--text-secondary)]" aria-busy="true">Reading your next move…</span>
+        ) : promptItems.length > 0 ? (
+          promptItems.map((item) => {
+            const recommendation = item.kind === "recommendation"
+              ? recommendations.data?.find((candidate) => candidate.concept_id === item.id)
+              : undefined;
+            return (
+              <Link
+                key={item.id}
+                href={item.href}
+                onClick={() => {
+                  if (recommendation) {
+                    void api(`/recommendations/${recommendation.concept_id}/click`, {
+                      method: "POST",
+                      body: JSON.stringify({ score: recommendation.score, factors: recommendation.factors ?? {} }),
+                    });
+                  }
+                }}
+                className="flex shrink-0 items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs transition-colors hover:border-[var(--accent)]"
+              >
+                <span className="font-semibold text-[var(--accent)]">{item.label}</span>
+                <span>{item.name}</span>
+              </Link>
+            );
+          })
+        ) : (
+          <span className="text-xs text-[var(--text-secondary)]">Nothing due — add an interest to chart the next idea.</span>
+        )}
+      </nav>
 
       {/* Canvas / list + inspector */}
       <div className="relative min-h-0 flex-1">

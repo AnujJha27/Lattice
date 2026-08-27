@@ -70,5 +70,6 @@ class SourceOut(BaseModel):
     authors: list[str]
     published: date | None
     ingest_status: str
+    ingest_error: str | None = None
     chunk_count: int = 0
     created_at: str | None = None

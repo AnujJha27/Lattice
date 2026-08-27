@@ -39,6 +39,7 @@ UI, and review/discovery flows) is built on these primitives.
 | Tavily API client | tavily-ai/tavily (HTTP) | proprietary SaaS (MIT SDK examples) | v1 API | General web search behind `WebSearchProvider` | Custom httpx client; normalized to SearchHit |
 | arXiv API | arxiv.org help/api | open data | Atom API | Academic preprint search; arXiv IDs persisted for dedup | Custom Atom XML parser |
 | OpenAlex API | ourresearch/openalex | CC0 data | v1 API | Scholarly metadata, DOIs, citation counts | Custom client; author/DOI extraction |
+| The Metropolitan Museum of Art Collection API | metmuseum.github.io | Open Access/public-domain records | v1 | Rights-gated fallback visual metadata when Wikimedia has too few results | Requires `isPublicDomain`, title, and HTTPS image URL; attribution is retained |
 
 Ranking, classification, dedup, chunking, extraction, lesson rendering,
 pathway validation, review scheduling, and recommendation logic are

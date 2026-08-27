@@ -40,8 +40,9 @@ concept content into user state.
 
 ### 3. PostgreSQL job table instead of Redis/Celery (spec overrides §6)
 
-Background work (ingestion, embeddings, pathway generation) uses the `jobs`
-table with status/progress/attempts/dedupe_key. A small worker loop polls it.
+Background work (ingestion, embeddings, pathway generation, and portrait
+recomputation) uses the `jobs` table with status/progress/attempts/dedupe_key.
+A small worker loop polls it.
 Introduce Redis only when measured need appears.
 
 ### 4. Provider abstractions at the boundary (spec §37)
@@ -101,8 +102,9 @@ for lexical search.
 - **Review and discovery** — mastery updates, spaced review scheduling,
   recommendations, portrait snapshots, and feedback events.
 - **Web experience** — Next.js app shell, Supabase SSR sessions, Sigma.js
-  WebGL graph, accessible list view, responsive lesson reader, and shared
-  loading/error states.
+  WebGL graph, semantic SVG portrait renderer, accessible list/text views,
+  responsive lesson reader, and shared loading/error states. The renderer
+  split and tradeoffs are recorded in `docs/portrait-rendering.md`.
 
 Integration tests run in CI against a pgvector service container and skip
 locally without `DATABASE_URL`; graph, validation, citation, and source-domain

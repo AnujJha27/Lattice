@@ -48,6 +48,7 @@ export interface SourceItem {
   authors: string[];
   published: string | null;
   ingest_status: IngestStatus;
+  ingest_error: string | null;
   chunk_count: number;
   created_at: string | null;
 }
