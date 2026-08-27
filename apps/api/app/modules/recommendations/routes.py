@@ -21,6 +21,7 @@ class Recommendation(BaseModel):
     concept_id: str
     name: str
     score: float
+    reason: str
     factors: dict[str, float] = Field(default_factory=dict)
 
 
@@ -61,6 +62,24 @@ def _deterministic_score(state: UserConcept, now: datetime) -> float:
     return 0.45 * float(state.interest_score) + 0.3 * (100 - float(state.mastery_score)) + due
 
 
+def recommendation_reason(
+    mastery_score: float,
+    interest_score: float,
+    prerequisites_ready: bool,
+    next_review_at: datetime | None,
+    now: datetime,
+) -> str:
+    if next_review_at and next_review_at <= now:
+        return "Due for review"
+    if prerequisites_ready:
+        return "Prerequisites are ready"
+    if interest_score >= 60 and interest_score >= mastery_score + 15:
+        return "Interest is ahead of mastery"
+    if mastery_score < 60:
+        return "Strengthen your foundation"
+    return "A strong next step"
+
+
 @router.get("/recommendations", response_model=list[Recommendation])
 async def recommendations(user: CurrentUser = CurrentUserDep, session: AsyncSession = Depends(get_session)):
     rows = await session.execute(
@@ -92,6 +111,11 @@ async def recommendations(user: CurrentUser = CurrentUserDep, session: AsyncSess
     ranked = [Recommendation(
         concept_id=str(concept.id), name=concept.canonical_name,
         score=round((deterministic := _deterministic_score(state, now)) + 30 * (llm := max(0, min(1, scores.get(str(concept.id), 0)))), 2),
+        reason=recommendation_reason(
+            float(state.mastery_score), float(state.interest_score),
+            bool(prereqs.get(concept.id)) and concept.id in ready_ids,
+            state.next_review_at, now,
+        ),
         factors={"deterministic": round(deterministic, 2), "llm": round(llm, 3),
                  "prerequisite_ready": 1.0 if concept.id in ready_ids else 0.0},
     ) for concept, state in candidates]

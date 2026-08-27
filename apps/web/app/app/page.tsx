@@ -21,9 +21,8 @@ type Health = {
   };
 };
 
-type Recommendation = { concept_id: string; name: string; score: number; factors?: { deterministic?: number; llm?: number } };
+type Recommendation = { concept_id: string; name: string; score: number; reason: string; factors?: { deterministic?: number; llm?: number } };
 type DueReview = { concept_id: string; name: string; mastery_score: number };
-type RecommendationEvaluation = { ctr: number; clicked_mastery_delta: number };
 
 export default function OverviewPage() {
   const health = useQuery({
@@ -40,11 +39,6 @@ export default function OverviewPage() {
     queryKey: ["recommendations"],
     queryFn: () => api<Recommendation[]>("/recommendations"),
   });
-  const recommendationEvaluation = useQuery({
-    queryKey: ["recommendations", "evaluation"],
-    queryFn: () => api<RecommendationEvaluation>("/recommendations/evaluation"),
-  });
-
   const concepts = brain.data?.nodes.length ?? 0;
   const connections = brain.data?.edges.length ?? 0;
 
@@ -186,15 +180,26 @@ export default function OverviewPage() {
           <Reveal delay={0.3} className="md:col-span-2">
             <SpotlightCard>
               <div className="p-6">
-                <p className="eyebrow mb-5">What to explore next {recommendationEvaluation.data && <span className="ml-2 normal-case tracking-normal text-[var(--text-muted)]">· {Math.round(recommendationEvaluation.data.ctr * 100)}% clicked</span>}</p>
+                <p className="eyebrow mb-5">What to explore next</p>
                 {recommendations.isPending ? (
                   <Shimmer className="h-10" />
                 ) : recommendations.data?.length ? (
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                    {recommendations.data.map((item) => (
-                      <Link key={item.concept_id} href={`/app/concepts/${item.concept_id}`} onClick={() => { void api(`/recommendations/${item.concept_id}/click`, { method: "POST", body: JSON.stringify({ score: item.score, factors: item.factors ?? {} }) }); }} className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)] p-3 transition-colors hover:border-[var(--accent)]">
-                        <span className="block truncate text-sm font-medium">{item.name}</span>
-                        <span className="mt-1 block font-mono text-[10px] text-[var(--text-muted)]">{Math.round(item.score)} priority{item.factors?.llm ? ` · AI ${Math.round(item.factors.llm * 100)}` : ""}</span>
+                    {recommendations.data.map((item, index) => (
+                      <Link
+                        key={item.concept_id}
+                        href={`/app/concepts/${item.concept_id}`}
+                        onClick={() => { void api(`/recommendations/${item.concept_id}/click`, { method: "POST", body: JSON.stringify({ score: item.score, factors: item.factors ?? {} }) }); }}
+                        className="group min-h-28 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)] p-3 transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-muted)]/20"
+                      >
+                        <span className="flex items-center justify-between font-mono text-[10px] tracking-widest text-[var(--accent)]">
+                          {String(index + 1).padStart(2, "0")}
+                          <span className="text-sm opacity-0 transition-opacity group-hover:opacity-100" aria-hidden>↗</span>
+                        </span>
+                        <span className="mt-3 block line-clamp-2 min-h-10 text-sm font-medium leading-5">{item.name}</span>
+                        <span className="mt-2 block font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                          {item.reason}
+                        </span>
                       </Link>
                     ))}
                   </div>
