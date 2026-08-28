@@ -54,7 +54,7 @@ async def test_gemini_text_rotates_to_next_key_on_quota_error(monkeypatch):
     calls = []
     monkeypatch.setattr(
         "app.providers.gemini.genai.Client",
-        lambda api_key: _Client(api_key, calls, {"first"}),
+        lambda *, api_key: _Client(api_key, calls, {"first"}),
     )
 
     response = await GeminiProvider(api_keys=["first", "second"]).generate_text("hello")
@@ -70,7 +70,7 @@ async def test_gemini_embeddings_rotate_to_next_key_on_quota_error(monkeypatch):
     calls = []
     monkeypatch.setattr(
         "app.providers.embedding.genai.Client",
-        lambda api_key: _Client(api_key, calls, {"first"}),
+        lambda *, api_key: _Client(api_key, calls, {"first"}),
     )
 
     vectors = await GeminiEmbeddingProvider(api_keys=["first", "second"]).embed(["hello"])

@@ -29,7 +29,7 @@ class GoogleKeyRotation:
 
     def _client(self, index: int) -> Any:
         if index not in self._clients:
-            self._clients[index] = self._client_factory(self._keys[index])
+            self._clients[index] = self._client_factory(api_key=self._keys[index])
         return self._clients[index]
 
     async def call(self, operation: Callable[[Any], Awaitable[T]]) -> T:
