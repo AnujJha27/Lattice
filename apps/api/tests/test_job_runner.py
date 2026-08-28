@@ -382,6 +382,47 @@ async def test_blocked_source_uses_saved_provider_content(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_unreadable_success_response_uses_saved_provider_content(monkeypatch):
+    source = SimpleNamespace(
+        id=uuid4(),
+        url="https://blocked.example/source",
+        arxiv_id=None,
+        storage_path=None,
+        metadata_={"content": "Readable provider content. " * 40},
+        ingest_status=IngestStatus.PENDING,
+        content_hash=None,
+    )
+    session = _SourceSession(source)
+
+    class _Client(_HttpClient):
+        async def get(self, _url):
+            return type(
+                "_ChallengeResponse",
+                (),
+                {
+                    "headers": {"content-type": "text/html"},
+                    "content": b"<html><script>challenge()</script></html>",
+                    "text": "<html><script>challenge()</script></html>",
+                    "raise_for_status": lambda self: None,
+                },
+            )()
+
+    class _Embedder:
+        def __init__(self):
+            pass
+
+        async def embed(self, texts):
+            return [[0.0] * 768 for _ in texts]
+
+    monkeypatch.setattr(handlers.httpx, "AsyncClient", _Client)
+    monkeypatch.setattr("app.providers.embedding.GeminiEmbeddingProvider", _Embedder)
+
+    await handlers.handle_source_ingest(session, {"source_id": str(source.id)})
+
+    assert source.ingest_status == IngestStatus.EMBEDDED
+
+
+@pytest.mark.asyncio
 async def test_blocked_source_uses_tavily_extract_for_existing_source(monkeypatch):
     source = SimpleNamespace(
         id=uuid4(),

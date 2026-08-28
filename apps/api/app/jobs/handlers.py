@@ -62,6 +62,11 @@ async def handle_source_ingest(session: AsyncSession, payload: dict) -> dict:
         source.ingest_status = IngestStatus.FETCHED
         text = str((source.metadata_ or {}).get("content", ""))[:MAX_TEXT_CHARS]
     if len(text) < 200:
+        fallback = await _source_content_fallback(source) if source.url else None
+        if fallback is not None:
+            response, _ = fallback
+            text = extract_text(response.text)[:MAX_TEXT_CHARS]
+    if len(text) < 200:
         raise ValueError("page contained too little readable text to ingest")
     source.ingest_status = IngestStatus.EXTRACTED
 
