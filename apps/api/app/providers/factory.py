@@ -15,11 +15,12 @@ def get_llm_provider() -> LLMProvider:
 
         return OpenRouterProvider(settings.openrouter_api_key, settings.openrouter_model)
 
-    if settings.google_api_key:
+    if settings.google_api_key_pool:
         from app.providers.gemini import GeminiProvider
 
         return GeminiProvider()
 
     raise RuntimeError(
-        "No LLM provider configured — set GOOGLE_API_KEY or OPENROUTER_API_KEY + OPENROUTER_MODEL"
+        "No LLM provider configured — set GOOGLE_API_KEY/GOOGLE_API_KEYS or "
+        "OPENROUTER_API_KEY + OPENROUTER_MODEL"
     )

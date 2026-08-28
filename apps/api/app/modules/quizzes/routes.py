@@ -45,7 +45,7 @@ async def create_quiz(concept_id: uuid.UUID, user: CurrentUser = CurrentUserDep,
     generated: GeneratedQuiz | None = None
     from app.core.config import get_settings
     settings = get_settings()
-    if settings.google_api_key or (settings.openrouter_api_key and settings.openrouter_model):
+    if settings.google_api_key_pool or (settings.openrouter_api_key and settings.openrouter_model):
         try:
             from app.providers.factory import get_llm_provider
             prompt = (

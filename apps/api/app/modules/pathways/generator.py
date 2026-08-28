@@ -182,7 +182,7 @@ async def persist_pathway(
         "prompt_key": PROMPT_KEY,
         "prompt_version": PROMPT_VERSION,
         "skipped_edges": skipped_edges,
-        "model": get_settings().google_api_key is not None and "gemini" or "none",
+        "model": get_settings().google_api_key_pool and "gemini" or "none",
     }
     return pathway
 

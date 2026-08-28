@@ -40,6 +40,8 @@ class Settings(BaseSettings):
 
     # AI providers
     google_api_key: str | None = None
+    # Optional comma-separated extras; the primary key remains backwards compatible.
+    google_api_keys: str = ""
     # Verified working with response_schema structured output.
     gemini_model: str = "gemini-2.5-flash"
     # Verified 768-dim output (matches pgvector columns).
@@ -52,6 +54,14 @@ class Settings(BaseSettings):
     openrouter_api_key: str | None = None
     openrouter_model: str | None = None
     ranking_openrouter_models: str = ""
+
+    @property
+    def google_api_key_pool(self) -> list[str]:
+        return list(dict.fromkeys(
+            key.strip()
+            for key in [self.google_api_key or "", *self.google_api_keys.split(",")]
+            if key.strip()
+        ))
 
     # CORS
     web_origin: str = "http://localhost:3000"

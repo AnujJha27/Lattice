@@ -10,16 +10,19 @@ from typing import Any
 from google import genai
 from google.genai import types as gtypes
 
+from app.providers.google import GoogleKeyRotation
 from app.providers.llm import LLMProvider, LLMResponse
 
 
 class GeminiProvider(LLMProvider):
     provider_name = "gemini"
 
-    def __init__(self, model: str | None = None):
+    def __init__(self, model: str | None = None, api_keys: list[str] | None = None):
         from app.core.config import get_settings
-        self._client = genai.Client(api_key=get_settings().google_api_key)
-        self.model = model or get_settings().gemini_model
+        settings = get_settings()
+        self.model = model or settings.gemini_model
+        self._keys = api_keys or settings.google_api_key_pool
+        self._rotation = GoogleKeyRotation(self._keys, genai.Client)
 
     async def generate_text(self, prompt: str, *, system: str | None = None,
                             temperature: float = 0.7) -> LLMResponse:
@@ -28,9 +31,9 @@ class GeminiProvider(LLMProvider):
             temperature=temperature,
             system_instruction=system,
         )
-        response = await self._client.aio.models.generate_content(
+        response = await self._rotation.call(lambda client: client.aio.models.generate_content(
             model=self.model, contents=prompt, config=config
-        )
+        ))
         latency = int((time.perf_counter() - started) * 1000)
         usage = getattr(response, "usage_metadata", None)
         return LLMResponse(
@@ -51,9 +54,9 @@ class GeminiProvider(LLMProvider):
             response_mime_type="application/json",
             response_schema=schema,
         )
-        response = await self._client.aio.models.generate_content(
+        response = await self._rotation.call(lambda client: client.aio.models.generate_content(
             model=self.model, contents=prompt, config=config
-        )
+        ))
         latency = int((time.perf_counter() - started) * 1000)
         raw = response.text or "{}"
         try:
@@ -73,8 +76,8 @@ class GeminiProvider(LLMProvider):
 
     async def stream_text(self, prompt: str, *, system: str | None = None):
         config = gtypes.GenerateContentConfig(temperature=0.7, system_instruction=system)
-        async for chunk in self._client.aio.models.generate_content_stream(
+        async for chunk in self._rotation.stream(lambda client: client.aio.models.generate_content_stream(
             model=self.model, contents=prompt, config=config
-        ):
+        )):
             if chunk.text:
                 yield chunk.text

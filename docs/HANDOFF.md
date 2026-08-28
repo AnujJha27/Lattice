@@ -382,6 +382,7 @@ Per **main spec §15–19 + overrides Phase F** — the closing loop `quiz → m
   SUPABASE_SERVICE_ROLE_KEY=replace_me
   DATABASE_URL=replace_me
   GOOGLE_API_KEY=replace_me
+  GOOGLE_API_KEYS=                 # optional comma-separated backup Gemini keys
   TAVILY_API_KEY=replace_me
   OPENROUTER_API_KEY=replace_me
   OPENROUTER_MODEL=z-ai/glm-5.2:free
