@@ -26,6 +26,8 @@ class PortraitEventType(enum.StrEnum):
     DISCOVERY_NAVIGATION = "portrait_discovery_navigation"
     HISTORY_OPENED = "portrait_history_opened"
     SNAPSHOT_SELECTED = "portrait_snapshot_selected"
+    PHOTO_ENABLED = "portrait_photo_enabled"
+    PHOTO_DISABLED = "portrait_photo_disabled"
 
 
 class PortraitSnapshot(Base, UUIDPrimaryKeyMixin):

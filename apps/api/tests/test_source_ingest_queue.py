@@ -7,7 +7,7 @@ from app.db.models import Concept, Source
 from app.db.models.source import IngestStatus, SourceOrigin, SourceType
 from app.jobs.queue import enqueue_job
 from app.modules.lessons.context import _persist_discovered
-from app.modules.sources.routes import _to_out
+from app.modules.sources.routes import _to_out, list_sources
 from app.modules.sources.schemas import SourceCandidate
 
 
@@ -34,6 +34,18 @@ class _Session:
         for value in self.added:
             if isinstance(value, Source) and value.id is None:
                 value.id = uuid4()
+
+
+class _RowsResult:
+    def __init__(self, *, scalar_rows=None, rows=None):
+        self.scalar_rows = scalar_rows or []
+        self.rows = rows or []
+
+    def scalars(self):
+        return SimpleNamespace(all=lambda: self.scalar_rows)
+
+    def all(self):
+        return self.rows
 
 
 @pytest.mark.asyncio
@@ -107,3 +119,36 @@ def test_source_output_exposes_ingest_error():
     output = _to_out(source, 0, "HTTPStatusError: 403 Forbidden")
 
     assert output.ingest_error == "HTTPStatusError: 403 Forbidden"
+
+
+@pytest.mark.asyncio
+async def test_list_sources_counts_chunks_in_one_batch_query():
+    source_id = uuid4()
+    source = SimpleNamespace(
+        id=source_id,
+        title="Indexed source",
+        url="https://example.com/source",
+        source_type=SourceType.OTHER,
+        origin=SourceOrigin.DISCOVERED,
+        publisher=None,
+        authors=[],
+        publication_date=None,
+        ingest_status=IngestStatus.EMBEDDED,
+        created_at=None,
+    )
+
+    class Session:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, _statement):
+            self.calls += 1
+            if self.calls == 1:
+                return _RowsResult(scalar_rows=[source])
+            if self.calls == 2:
+                return _RowsResult(scalar_rows=[])
+            return _RowsResult(rows=[(source_id, 4)])
+
+    result = await list_sources(SimpleNamespace(id=uuid4()), Session())
+
+    assert result[0].chunk_count == 4

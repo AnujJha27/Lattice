@@ -4,6 +4,7 @@ from uuid import UUID
 
 import httpx
 from sqlalchemy import select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser
@@ -33,12 +34,20 @@ def _asset_out(asset: VisualAsset, cached_url: str | None = None) -> VisualAsset
 
 
 async def visual_sources_for_snapshot(session: AsyncSession, snapshot_id: UUID) -> list[PortraitVisualSource]:
-    rows = await session.execute(
-        select(VisualAsset, PortraitVisual)
-        .join(PortraitVisual, PortraitVisual.visual_asset_id == VisualAsset.id)
-        .where(PortraitVisual.snapshot_id == snapshot_id)
-        .order_by(PortraitVisual.relevance_score.desc())
-    )
+    try:
+        rows = await session.execute(
+            select(VisualAsset, PortraitVisual)
+            .join(PortraitVisual, PortraitVisual.visual_asset_id == VisualAsset.id)
+            .where(PortraitVisual.snapshot_id == snapshot_id)
+            .order_by(PortraitVisual.relevance_score.desc())
+        )
+    except ProgrammingError as exc:
+        # A rolling deploy can briefly serve code before the visual migration.
+        # ponytail: fail soft for the optional visual layer; remove after every deployment runs migrations.
+        if "UndefinedTableError" not in str(exc):
+            raise
+        await session.rollback()
+        return []
     return [PortraitVisualSource(
         asset_id=str(link.visual_asset_id), represents=link.represents, concept_ids=link.concept_ids or [],
         portrait_role=link.portrait_role,

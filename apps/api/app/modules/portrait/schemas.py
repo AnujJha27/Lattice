@@ -85,6 +85,7 @@ class PortraitModel(BaseModel):
     narrative: str
     confidence: dict[str, float] = Field(default_factory=dict)
     changes_since_previous: list[PortraitChange] = Field(default_factory=list)
+    portrait_photo_enabled: bool = False
 
 
 class PortraitElementExplanation(BaseModel):

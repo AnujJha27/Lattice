@@ -1587,7 +1587,10 @@ The Portrait should not become a parallel factual-generation system.
 
 # 58. Optional Generated Artwork
 
-Future feature only.
+The current optional edition is a source-free deterministic SVG generated from
+the portrait composition. A future model-backed raster generator may be added
+behind a separate provider and consent flow; it must not replace the
+authoritative interactive portrait.
 
 Architecture:
 
@@ -2302,8 +2305,8 @@ portrait_photo_disabled
 Do not send sensitive underlying text to analytics.
 
 The core implementation records only event type plus portrait, snapshot, and
-element identifiers. Photo enable/disable events remain deferred with the
-optional photograph mode.
+element identifiers. Photo enable/disable events use the same identifier-only
+boundary.
 
 ---
 
@@ -2321,11 +2324,12 @@ portrait can be validated before the next layer depends on it:
 | 5 — Evolution | **5a** snapshot comparison and change detection; **5b** timeline/history UI; **5c** continuity-preserving animation |
 | 6 — Advanced Art | **6a** themes; **6b** export/share cards; **6c** optional generated-art editions and safety review |
 
-**Current implementation boundary:** Phase 2c's photograph mode remains an
-optional future branch. The core portrait does not upload or store a user
-photograph: it uses the anonymous human form, then adds rights-gated fetched
-visual sources in Phase 3. Generated artwork remains a Phase 6 edition and
-does not replace the canonical portrait.
+**Current implementation boundary:** The planned Phase 2c photograph mode,
+responsive browser coverage, and Phase 6 presentation editions are now in
+place. Profile photographs are private, explicitly opt-in, replaceable,
+deletable, and fall back to the anonymous human form on failure. Themes and
+source-free SVG share cards are presentation-only; the canonical interactive
+portrait remains the authoritative reading.
 
 ## Phase 1 — Portrait Intelligence
 
@@ -2448,8 +2452,8 @@ Implementation split:
 * **4c7:** expose the latest source-ingest failure reason in the Library while
   keeping the source record and its retry state intact.
 * **4c8:** add browser-level Profile and Discovery contract coverage with
-  mocked portrait responses; keep screenshot baselines as a separate browser
-  visual-regression gate.
+  mocked portrait responses, mobile/reduced-motion checks, and screenshot
+  capture.
 * **4d:** persist privacy-safe interaction analytics with identifiers only.
 * **4e1:** Profile and Discovery expose the refresh control;
   `GET /portrait` and Discovery serve the latest persisted snapshot;
@@ -2490,12 +2494,12 @@ Implementation split:
 
 ## Phase 6 — Advanced Art
 
-Only later:
+Implemented presentation layer:
 
 * portrait themes
 * export
 * share cards
-* optional generated art editions
+* optional source-free generated-art editions
 
 ---
 

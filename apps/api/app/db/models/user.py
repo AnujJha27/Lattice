@@ -6,7 +6,7 @@ The FK profiles.id → auth.users.id is declared only in the Alembic baseline
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Text
+from sqlalchemy import Boolean, DateTime, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,3 +20,6 @@ class Profile(Base, TimestampMixin):
     display_name: Mapped[str | None] = mapped_column(Text)
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     settings: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    portrait_photo_key: Mapped[str | None] = mapped_column(Text)
+    portrait_photo_content_type: Mapped[str | None] = mapped_column(Text)
+    portrait_photo_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

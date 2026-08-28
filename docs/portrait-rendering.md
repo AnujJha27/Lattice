@@ -23,6 +23,11 @@ is needed.
   to an object URL because SVG image requests cannot attach custom auth headers.
 - The renderer only draws bounded slices of the portrait model, keeping the
   DOM small for the current single-user scale.
+- An explicitly uploaded profile photo is fetched through the owner-scoped API
+  into a browser object URL, clipped to the human form, and layered without
+  altering the source pixels. Failed or disabled photo use leaves the
+  anonymous silhouette in place. The eight named themes recolor the same
+  deterministic SVG; they are presentation variants, not new portrait facts.
 
 Canvas was rejected for the portrait because its pixels do not provide
 interactive accessibility or source inspection without recreating a parallel
@@ -42,9 +47,11 @@ PortraitRenderer (SVG)
     └── accessible textual portrait index (Profile)
 ```
 
-The canonical portrait does not upload or store a user photograph and does not
-generate artwork. Visual assets come through the rights-gated source service;
-generated art remains a future, non-authoritative edition.
+The canonical portrait can use a private profile photograph only after explicit
+opt-in. Exported share cards and generated editions are source-free SVGs built
+from portrait signals, so they never send licensed source imagery or a profile
+photo into a derivative-art pipeline. Visual assets still come through the
+rights-gated source service.
 
 ## Stability and responsive behavior
 
@@ -69,6 +76,7 @@ Portrait is a stable, semantic composition.
 
 Browser-independent tests cover deterministic coordinates, sibling-independent
 stability, accessible SVG semantics, visible focus cues, responsive hiding,
-and the existing portrait/history flows. Direct TypeScript checking passes.
-Browser screenshot, keyboard, and assistive-technology verification still
-requires a browser-capable CI or development environment.
+profile-photo contracts, and the existing portrait/history flows. Playwright
+covers Profile/Discovery, photo controls, mobile reduced-motion rendering, and
+non-empty screenshot capture. Direct TypeScript checking passes; run the
+Playwright suite in CI or a browser-capable development environment.

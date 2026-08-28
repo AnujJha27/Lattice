@@ -106,4 +106,5 @@ export interface PortraitModel {
   narrative: string;
   confidence: Record<string, number>;
   changes_since_previous: PortraitChange[];
+  portrait_photo_enabled: boolean;
 }

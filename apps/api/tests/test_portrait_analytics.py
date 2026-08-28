@@ -33,6 +33,8 @@ def test_portrait_event_enum_persists_documented_values():
         "portrait_discovery_navigation",
         "portrait_history_opened",
         "portrait_snapshot_selected",
+        "portrait_photo_enabled",
+        "portrait_photo_disabled",
     ]
 
 

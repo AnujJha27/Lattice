@@ -21,7 +21,7 @@ Create a **Web Service** from this repository:
 
 - Root directory: `apps/api`
 - Runtime: Python 3.12+
-- Build command: `pip install .`
+- Build command: `pip install . && alembic upgrade head`
 - Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 - Health check path: `/api/health`
 
@@ -34,6 +34,7 @@ DATABASE_URL=postgresql+asyncpg://...
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
+SUPABASE_STORAGE_BUCKET=lattice-private  # private bucket for opt-in portrait photos
 ALLOWED_EMAILS=aj05767625@gmail.com,aj472032@gmail.com,aniruddh302004@gmail.com
 GOOGLE_API_KEY=...
 OPENROUTER_API_KEY=...
@@ -48,7 +49,13 @@ After deploy, verify `https://YOUR_API_DOMAIN/api/health` and `https://YOUR_API_
 
 ### Object storage requirement
 
-Production `make_storage()` intentionally refuses the local filesystem. Before enabling PDF uploads in production, add an S3-compatible/Supabase Storage implementation and set its credentials. URL sources, notes, quizzes, reviews, and the graph do not depend on object storage. Do not switch production to local storage: Render disks are ephemeral.
+Production `make_storage()` uses Supabase Storage for private portrait photos
+and PDF uploads when `SUPABASE_SERVICE_ROLE_KEY` and
+`SUPABASE_STORAGE_BUCKET` are set. Create a private bucket named
+`lattice-private` (or the configured name) in Supabase Storage. The API streams
+photos only after authenticating the owning user; do not expose the service-role
+key to Vercel. Do not switch production to local storage: Render disks are
+ephemeral.
 
 ## 3. Deploy the web app on Vercel
 
@@ -78,9 +85,15 @@ Add the Vercel domain to Supabase Auth redirect URLs and set the API `WEB_ORIGIN
 5. Open Review and Discovery; confirm due reviews, recommendation events, and portrait snapshots appear.
 6. Save a URL or note. Test PDFs only after object storage is configured.
 
+The migration must remain in the build command for a Free Render service,
+because Free Web Services do not provide a pre-deploy command. It applies
+schema changes before the new API process starts; do not put `alembic upgrade
+head` in the long-running start command. If the service is upgraded to a paid
+instance, move the migration to Render's pre-deploy command instead.
+
 ## 5. CI and releases
 
-Pushes to `main` run `.github/workflows/ci.yml`. Merge only when web typecheck/build, API lint/tests, and migration SQL generation pass. Apply `alembic upgrade head` as a release step before pointing traffic at a schema-dependent API.
+Pushes to `main` run `.github/workflows/ci.yml`. Merge only when web typecheck/build, API lint/tests, and migration SQL generation pass. On the Free Render service, the build command applies `alembic upgrade head` before the API starts.
 
 ## Rollback
 

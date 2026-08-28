@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser
@@ -21,6 +22,7 @@ from app.db.models import (
     Goal,
     GoalConcept,
     PortraitSnapshot,
+    Profile,
     Review,
     UserConcept,
 )
@@ -630,7 +632,7 @@ async def get_portrait(
     )).scalar_one_or_none()
     stored = _stored_model(latest) if latest else None
     if not recompute and stored:
-        return await with_visual_sources(session, stored)
+        return await _present_portrait(session, user, stored)
     try:
         model = await build_portrait(session, user)
     except Exception:
@@ -638,16 +640,16 @@ async def get_portrait(
         fallback = _stored_model(latest) if latest else None
         if fallback and fallback_on_error:
             logger.exception("portrait computation failed; serving previous snapshot")
-            return await with_visual_sources(session, fallback)
+            return await _present_portrait(session, user, fallback)
         raise
     if stored and stored.input_hash == model.input_hash:
-        return await with_visual_sources(session, stored)
+        return await _present_portrait(session, user, stored)
     changes = _changes(latest.payload if latest else None, model)
     if stored and not changes and (
         stored.algorithm_version == model.algorithm_version
         and stored.config_version == model.config_version
     ):
-        return await with_visual_sources(session, stored)
+        return await _present_portrait(session, user, stored)
     model = model.model_copy(update={
         "version": (stored.version + 1) if stored else 1,
         "changes_since_previous": changes,
@@ -658,7 +660,7 @@ async def get_portrait(
     model = model.model_copy(update={"snapshot_id": str(snapshot.id)})
     snapshot.payload = model.model_dump(mode="json")
     await session.commit()
-    return await with_visual_sources(session, model)
+    return await _present_portrait(session, user, model)
 
 
 async def get_portrait_history(session: AsyncSession, user: CurrentUser) -> list[PortraitModel]:
@@ -667,7 +669,8 @@ async def get_portrait_history(session: AsyncSession, user: CurrentUser) -> list
         .order_by(PortraitSnapshot.created_at.desc()).limit(30)
     )
     models = [model for row in rows.scalars().all() if (model := _stored_model(row)) is not None]
-    return [await with_visual_sources(session, model) for model in models]
+    photo_enabled = await _portrait_photo_enabled(session, user) if hasattr(session, "scalar") else False
+    return [await _present_portrait(session, user, model, photo_enabled) for model in models]
 
 
 async def get_portrait_snapshot(session: AsyncSession, user: CurrentUser, snapshot_id: UUID) -> PortraitModel | None:
@@ -675,4 +678,26 @@ async def get_portrait_snapshot(session: AsyncSession, user: CurrentUser, snapsh
         PortraitSnapshot.id == snapshot_id, PortraitSnapshot.user_id == user.id
     ))
     model = _stored_model(snapshot) if snapshot else None
-    return await with_visual_sources(session, model) if model else None
+    return await _present_portrait(session, user, model) if model else None
+
+
+async def _present_portrait(
+    session: AsyncSession, user: CurrentUser, model: PortraitModel, photo_enabled: bool | None = None
+) -> PortraitModel:
+    model = await with_visual_sources(session, model)
+    if not hasattr(model, "model_copy") or not hasattr(session, "scalar"):
+        return model
+    enabled = await _portrait_photo_enabled(session, user) if photo_enabled is None else photo_enabled
+    return model.model_copy(update={"portrait_photo_enabled": enabled})
+
+
+async def _portrait_photo_enabled(session: AsyncSession, user: CurrentUser) -> bool:
+    try:
+        profile = await session.scalar(select(Profile).where(Profile.id == user.id))
+    except ProgrammingError as exc:
+        # Keep a rolling deploy usable before the profile-photo migration lands.
+        if "UndefinedColumnError" not in str(exc):
+            raise
+        await session.rollback()
+        return False
+    return bool(profile and profile.portrait_photo_key and profile.portrait_photo_enabled)

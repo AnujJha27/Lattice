@@ -15,6 +15,21 @@ type VisualRefreshJob = {
 
 type PortraitRefreshJob = Omit<VisualRefreshJob, "snapshot_id">;
 
+export type Profile = {
+  id: string;
+  display_name: string | null;
+  onboarded: boolean;
+  portrait_photo_enabled: boolean;
+  has_portrait_photo: boolean;
+};
+
+export function useProfile() {
+  return useQuery({
+    queryKey: ["profile"],
+    queryFn: () => api<Profile>("/users/me"),
+  });
+}
+
 export function usePortrait() {
   return useQuery({
     queryKey: ["portrait"],

@@ -178,12 +178,17 @@ async def list_sources(user: CurrentUser = CurrentUserDep, session: AsyncSession
             source_id = str(job.payload.get("source_id"))
             if source_id not in ingest_errors:
                 ingest_errors[source_id] = None if job.status == JobStatus.SUCCEEDED else job.last_error
+        chunk_rows = await session.execute(
+            select(SourceChunk.source_id, func.count())
+            .where(SourceChunk.source_id.in_([source.id for source in sources]))
+            .group_by(SourceChunk.source_id)
+        )
+        chunk_counts = {str(source_id): int(count) for source_id, count in chunk_rows.all()}
+    else:
+        chunk_counts = {}
     out = []
     for s in sources:
-        count = await session.scalar(
-            select(func.count()).select_from(SourceChunk).where(SourceChunk.source_id == s.id)
-        )
-        out.append(_to_out(s, int(count or 0), ingest_errors.get(str(s.id))))
+        out.append(_to_out(s, chunk_counts.get(str(s.id), 0), ingest_errors.get(str(s.id))))
     return out
 
 

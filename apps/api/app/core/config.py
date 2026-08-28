@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     supabase_url: str = "https://your-project.supabase.co"
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
+    supabase_storage_bucket: str = "lattice-private"
     # Legacy projects sign JWTs with this shared secret instead of JWKS.
     supabase_jwt_secret: str | None = None
     # Comma-separated addresses allowed to use the production app.

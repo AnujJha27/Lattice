@@ -26,7 +26,7 @@
 - **DB:** SQLAlchemy 2 async + Alembic
   - `alembic/versions/0001_baseline.py` — full schema (extensions `vector`, `pgcrypto`; enums; tables: `profiles`, `concepts` (generated `tsvector` via `Computed`), `concept_edges`, `user_concepts`, `goals`/`goal_concepts`, `pathways`/`pathway_sections`/`pathway_concepts`, `sources`/`source_chunks` (`vector(768)` HNSW), `concept_sources`, `lessons`/`lesson_sources`, `prompt_versions`/`ai_generations`, `jobs`)
   - `0002_job_timestamps.py` — adds `jobs.created_at/updated_at` (FIFO polling)
-- **Provider abstractions:** `LLMProvider` (Gemini), `EmbeddingProvider` (Gemini 768), `WebSearchProvider` (Tavily + arXiv + OpenAlex), `ObjectStorageProvider` (Local dev)
+- **Provider abstractions:** `LLMProvider` (Gemini), `EmbeddingProvider` (Gemini 768), `WebSearchProvider` (Tavily + arXiv + OpenAlex), `ObjectStorageProvider` (Local dev + Supabase private storage)
 - **Factory:** `providers/factory.py` — `get_llm_provider()` → OpenRouter when `OPENROUTER_API_KEY+OPENROUTER_MODEL` set, else Gemini
 - **Auth:** Supabase Auth (magic-link + Google OAuth). API verifies JWT via `PyJWKClient` → JWKS `ES256/RS256` + HS256 fallback (`SUPABASE_JWT_SECRET`). `profiles.id → auth.users.id` (FK declared only in migration). `ensure_profile(session, user_id, email)` auto-mirrors auth user; called by concept/pathway/source/lesson routes and by `ensure_user_concept` to prevent `FK user_concepts_user_id_profiles` violations.
 - **Errors/Observability:** unified `{error:{code,message}, request_id}`; `RequestContextMiddleware` (`x-request-id` + JSON logs + access log); `/api/health` reports llm/embeddings/web_search/academic
@@ -74,7 +74,7 @@
 ## 3. Current Dev Health
 - **Backend:** running at `http://127.0.0.1:8000`; `GET /api/health` shows `openrouter:z-ai/glm-5.2:free`, `web_search:tavily`, `academic:[arxiv,openalex]`; pathway generation cycling after 429s is healthy (sticky rotation now recovers)
 - **Frontend:** `apps/web` — direct TypeScript check ✅; production build is not runnable in this WSL1 checkout because the npm wrapper rejects WSL1 and the direct Next binary lacks its optional Linux SWC package. Run the build from WSL2/Windows after dependencies are installed; no application compile error has been observed here.
-- **Tests:** `apps/api` non-DB suite (excluding the local TestClient hang) — 108 passed; portrait/visual/golden tests — 33 passed; portrait/learning integration — 11 skipped without disposable `DATABASE_URL`; focused web checks — 5 JavaScript files pass plus compiled Brain checks — 3 passed; direct TypeScript typecheck and Python compilation pass; full-repo Ruff is clean
+- **Tests:** `apps/api` non-DB suite (excluding the local TestClient hang) — 114 passed; portrait/visual/golden tests — 33 passed; portrait/learning integration — 11 skipped without disposable `DATABASE_URL`; focused web checks — 5 JavaScript files pass plus compiled Brain checks — 3 passed; direct TypeScript typecheck and Python compilation pass; full-repo Ruff is clean
 
 ---
 
@@ -119,7 +119,7 @@
 | **P0** | **Run the disposable Postgres/pgvector CI job** — apply head migrations, then run integration tests | `.github/workflows/ci.yml` | Migration and integration job pass in CI |
 | **P1** | **Run browser portrait verification** — sparse, mature, inspector, island drill-down, and mobile layout | Profile/Brain | Main interaction and responsive checks pass |
 | **P2** | **Verify the institutional visual fallback in deployment** | `modules/visual_sources/providers/*` | The Met fallback is reachable and preserves rights/provenance fields in a real refresh |
-| **P2** | **Start Phase 6 only after the release gates** — themes/export/generated editions | `docs/FUTURE_STEPS.md` §§58–60 | Generated artwork remains optional and non-authoritative |
+| **P2** | **Run the Phase 6 presentation gate** — themes/export/generated editions | `docs/FUTURE_STEPS.md` §§58–60 | Browser-check the eight themes and SVG/PNG downloads; artwork remains optional and non-authoritative |
 
 ---
 
@@ -508,6 +508,21 @@ lattice/
 
 ---
 
+## Latest implementation slice — 2026-08-28
+
+- Phase 2c is now implemented: private JPEG/PNG/WebP profile-photo upload,
+  replacement, deletion, explicit enable/disable, owner-scoped streaming, and
+  silhouette fallback. Migrations `0011_private_portrait_photos` and
+  `0012_portrait_photo_events` add the data and telemetry boundary.
+- Phase 6 presentation work is now implemented: Editorial, Constellation,
+  Archive, Topographic, Sigil, Botanical, Orbital, and Minimal themes plus
+  source-free deterministic SVG/PNG share-card editions and summary sharing.
+  Export never includes profile photos or licensed visual-source pixels.
+- The source list uses one chunk-count aggregate query instead of one count per
+  source. Playwright now covers four Profile/Discovery/mobile/photo scenarios;
+  local execution remains blocked by this WSL1 checkout's Windows-only Next
+  SWC package, while CI installs Linux dependencies.
+
 ## 10. Immediate Next Actions for You
 
 1. **Restart backend** (or rely on `--reload` if already up) — everything above is already saved:
@@ -522,6 +537,8 @@ lattice/
    - Concept → Generate grounded lesson → orbit+ sweep (no pulse), then book sections render (check `a3d65c89…` is already there for Formal Verification)
    - Fuse: select two stars → Fuse → confirm 201 in Network, 429s cycle silently to next model
    - Profile → Find sourced visuals: confirm the request returns a visual-refresh job, the old portrait stays visible while it runs, and the completed sources appear without a full portrait recomputation
+   - Profile → Portrait photo: create the private `lattice-private` Supabase bucket, upload a JPEG/PNG/WebP, toggle photo use, replace it, and delete it. The anonymous silhouette must remain when photo loading fails.
+   - Profile → Edition: switch among the eight themes and download both SVG and PNG share cards. These cards intentionally exclude the profile photo and sourced image pixels.
 
 ---
 

@@ -52,9 +52,10 @@ Introduce Redis only when measured need appears.
 - `EmbeddingProvider` → GeminiEmbeddingProvider (`gemini-embedding-001`, 768d).
 - `WebSearchProvider` → TavilyProvider, ArxivProvider, OpenAlexProvider.
   Ranking/dedup live in the sources domain, not in providers.
-- `ObjectStorageProvider` → LocalStorageProvider (dev only). Production PDF
-  uploads remain disabled until an S3-compatible provider is added; Render
-  disks are ephemeral.
+- `ObjectStorageProvider` → LocalStorageProvider (dev) and
+  SupabaseStorageProvider (production). Private portrait photos and PDF
+  uploads use the configured Supabase bucket; Render disks remain out of the
+  storage path.
 
 No feature module imports an SDK directly.
 
@@ -94,17 +95,18 @@ for lexical search.
 - **Brain and concepts** — graph retrieval, case-insensitive and
   embedding-assisted dedupe, domain-aware clusters, mastery state, graph
   inspection, and DAG-validated prerequisite/related edges.
-- **Sources** — URL and note ingestion, trust-based classification,
-  Tavily/arXiv/OpenAlex discovery, ranking, dedupe, extraction, chunking, and
-  Gemini embeddings. PDF ingestion is implemented for local storage only.
+- **Sources** — URL, note, and private PDF ingestion, trust-based
+  classification, Tavily/arXiv/OpenAlex discovery, ranking, dedupe, extraction,
+  chunking, and Gemini embeddings.
 - **Pathways and lessons** — asynchronous structured generation, validated
   pathway DAGs, on-demand grounded lessons, inline citations, and quizzes.
 - **Review and discovery** — mastery updates, spaced review scheduling,
   recommendations, portrait snapshots, and feedback events.
 - **Web experience** — Next.js app shell, Supabase SSR sessions, Sigma.js
-  WebGL graph, semantic SVG portrait renderer, accessible list/text views,
-  responsive lesson reader, and shared loading/error states. The renderer
-  split and tradeoffs are recorded in `docs/portrait-rendering.md`.
+  WebGL graph, semantic SVG portrait renderer, optional private profile photo,
+  eight portrait themes, SVG/PNG share-card editions, accessible list/text
+  views, responsive lesson reader, and shared loading/error states. The
+  renderer split and tradeoffs are recorded in `docs/portrait-rendering.md`.
 
 Integration tests run in CI against a pgvector service container and skip
 locally without `DATABASE_URL`; graph, validation, citation, and source-domain
@@ -112,10 +114,9 @@ logic also have focused unit tests.
 
 ## Next priorities
 
-1. Add durable S3-compatible storage with signed/resumable PDF uploads.
-2. Improve review calibration and recommendation evaluation.
-3. Add source search, folders, tags, and re-ingestion/version metadata.
-4. Add deletion/export controls and encryption-at-rest policy for user content.
+1. Improve review calibration and recommendation evaluation.
+2. Add source search, folders, tags, and re-ingestion/version metadata.
+3. Add deletion/export controls and encryption-at-rest policy for user content.
 
 Social sharing, teams, billing, and a plugin ecosystem remain out of scope
 until the single-user learning loop is measurably useful.

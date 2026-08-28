@@ -50,11 +50,22 @@ function portrait(snapshotId = SNAPSHOT_ID, version = 2) {
     narrative: "Mathematics is currently your most developed domain.",
     confidence: { overall: 0.8 },
     changes_since_previous: [{ kind: "emerging_thread", text: "Emerging thread appeared: Formal Methods" }],
+    portrait_photo_enabled: false,
   };
 }
 
 async function mockPortraitApi(page: Page) {
   await page.route("**/api/portrait/events", (route) => route.fulfill({ status: 204 }));
+  await page.route("**/api/users/me", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ id: "00000000-0000-0000-0000-000000000099", display_name: "Learner", onboarded: true, portrait_photo_enabled: true, has_portrait_photo: true }),
+  }));
+  await page.route("**/api/users/me/portrait-photo", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ enabled: false, has_photo: true }),
+  }));
   await page.route("**/api/portrait/history", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -98,5 +109,27 @@ test.describe("portrait surfaces", () => {
 
     await expect(page.getByText("Selected snapshot · v1")).toBeVisible();
     await expect(page.getByText("Emerging thread appeared: Formal Methods")).toBeVisible();
+  });
+
+  test("Profile exposes opt-in photo controls and a generated share card", async ({ page }) => {
+    await page.goto("/app/profile");
+
+    await expect(page.getByRole("checkbox", { name: "Use profile photo in portrait" })).toBeChecked();
+    await page.getByRole("combobox", { name: "Portrait theme" }).selectOption({ label: "Botanical" });
+    await expect(page.getByRole("heading", { name: "A card for the shape of your curiosity." })).toBeVisible();
+    await expect(page.getByText("BOTANICAL EDITION · V2 · DATA-BOUND")).toBeVisible();
+    await page.getByRole("checkbox", { name: "Use profile photo in portrait" }).uncheck();
+  });
+
+  test("Portrait remains usable on a narrow viewport with reduced motion", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/app/profile");
+
+    await expect(page.getByRole("heading", { name: "Your intellectual portrait." })).toBeVisible();
+    const portrait = page.getByRole("group", { name: "Interactive intellectual portrait" });
+    await expect(portrait).toBeVisible();
+    const screenshot = await page.screenshot();
+    expect(screenshot.byteLength).toBeGreaterThan(1_000);
   });
 });

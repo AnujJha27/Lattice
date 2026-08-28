@@ -9,7 +9,9 @@ export type PortraitEventType =
   | "portrait_brain_navigation"
   | "portrait_discovery_navigation"
   | "portrait_history_opened"
-  | "portrait_snapshot_selected";
+  | "portrait_snapshot_selected"
+  | "portrait_photo_enabled"
+  | "portrait_photo_disabled";
 
 /** Fire-and-forget telemetry containing IDs only; analytics must never block the UI. */
 export function trackPortraitEvent(

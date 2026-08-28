@@ -15,7 +15,7 @@ and Supabase provides the database, vector search, and authentication.
 - Brain graph with domain-colored concepts and mastery state
 - Automatic source classification, ranking, chunking, and embeddings
 - AI-generated pathways, grounded lessons, quizzes, reviews, and discovery
-- URL and note sources; PDF uploads remain disabled until object storage is configured
+- URL and note sources; private Supabase Storage supports opt-in portrait photos
 - Supabase magic-link/Google auth with a production email allowlist
 
 ## Stack
@@ -92,6 +92,11 @@ ALLOWED_EMAILS=you@example.com,another@example.com
 
 `ALLOWED_EMAILS` is enforced by the API for every protected route. Keep the
 Supabase service-role key, database password, and provider keys on Render only.
+For a Free Render service, append `&& alembic upgrade head` to the build command
+(`pip install . && alembic upgrade head`) so the schema is upgraded before the
+Uvicorn start command. Create the `lattice-private` Supabase Storage bucket as
+private before enabling portrait photos or PDF uploads. Paid services can use
+Render's pre-deploy command instead.
 
 ## Testing
 

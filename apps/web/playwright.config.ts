@@ -9,7 +9,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "LATTICE_E2E_BYPASS_AUTH=1 npm run dev -- --hostname 127.0.0.1",
+    command: "LATTICE_E2E_BYPASS_AUTH=1 node_modules/.bin/next dev --hostname 127.0.0.1",
     url: "http://127.0.0.1:3000/login",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
