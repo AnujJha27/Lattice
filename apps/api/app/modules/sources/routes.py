@@ -130,9 +130,19 @@ async def accept_source(
             owner_id=user.id,
             retrieved_at=datetime.now(UTC),
             ingest_status=IngestStatus.PENDING,
+            metadata_=(
+                {"content": payload.content, "content_source": "search_provider"}
+                if payload.content else {}
+            ),
         )
         session.add(source)
         await session.flush()
+    elif payload.content and source.ingest_status != IngestStatus.EMBEDDED:
+        source.metadata_ = {
+            **(source.metadata_ or {}),
+            "content": payload.content,
+            "content_source": "search_provider",
+        }
 
     if payload.concept_id:
         concept_uuid = uuid.UUID(payload.concept_id)
@@ -158,6 +168,34 @@ async def accept_source(
         select(func.count()).select_from(SourceChunk).where(SourceChunk.source_id == source.id)
     )
     return _to_out(source, int(chunk_count or 0))
+
+
+@router.post("/sources/{source_id}/retry", response_model=SourceOut)
+async def retry_source(
+    source_id: uuid.UUID,
+    user: CurrentUser = CurrentUserDep,
+    session: AsyncSession = Depends(get_session),
+):
+    """Requeue a source after its URL or provider quota has been fixed."""
+    from app.jobs.queue import enqueue_job
+
+    result = await session.execute(
+        select(Source).where(
+            Source.id == source_id,
+            or_(Source.owner_id == user.id, Source.owner_id.is_(None)),
+        )
+    )
+    source = result.scalar_one_or_none()
+    if source is None:
+        raise NotFound("source", str(source_id))
+
+    source.ingest_status = IngestStatus.PENDING
+    await enqueue_job(
+        session, "SOURCE_INGEST", {"source_id": str(source.id)},
+        dedupe_key=f"ingest:{source.id}",
+    )
+    await session.commit()
+    return _to_out(source, 0)
 
 
 @router.get("/sources", response_model=list[SourceOut])

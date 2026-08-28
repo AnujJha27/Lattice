@@ -1,8 +1,8 @@
 "use client";
 
-import { CheckCircle2, ExternalLink, FileText, XCircle } from "lucide-react";
+import { CheckCircle2, ExternalLink, FileText, RotateCcw, XCircle } from "lucide-react";
 import { motion } from "motion/react";
-import { useLibrary } from "@/hooks/useSources";
+import { useLibrary, useRetrySource } from "@/hooks/useSources";
 import { ShimmerRows } from "@/components/ui/Shimmer";
 import { SOURCE_TYPE_LABELS, type SourceItem } from "@/types/sources";
 
@@ -53,6 +53,7 @@ export function SourceLibraryList() {
 
 function SourceRow({ source }: { source: SourceItem }) {
   const status = STATUS_META[source.ingest_status];
+  const retry = useRetrySource();
 
   return (
     <li className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
@@ -88,6 +89,17 @@ function SourceRow({ source }: { source: SourceItem }) {
       </div>
 
       <div className="flex shrink-0 items-center gap-3">
+        {source.ingest_status === "FAILED" && (
+          <button
+            onClick={() => retry.mutate(source.id)}
+            disabled={retry.isPending}
+            aria-label={`Retry ingesting ${source.title}`}
+            className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] transition-colors hover:text-[var(--accent)] disabled:opacity-50"
+          >
+            <RotateCcw className="h-3 w-3" aria-hidden />
+            retry
+          </button>
+        )}
         <StatusBadge status={status.label} tone={status.tone}
                      title={source.chunk_count ? `${source.chunk_count} indexed chunks` : undefined} />
         {source.url && (

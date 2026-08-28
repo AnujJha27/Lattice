@@ -8,6 +8,7 @@ import pytest
 from app.db.models.job import JobStatus, JobType
 from app.db.models.source import IngestStatus
 from app.jobs import handlers, runner
+from app.jobs.handlers import _source_fallback_url
 
 
 class _Result:
@@ -187,6 +188,299 @@ async def test_remote_pdf_is_extracted_with_installed_parser(monkeypatch):
     assert result["chunks"] == 1
     assert result["characters"] >= 200
     assert source.ingest_status == IngestStatus.EMBEDDED
+
+
+@pytest.mark.asyncio
+async def test_arxiv_source_fetches_the_pdf_variant(monkeypatch):
+    requested_urls = []
+    source = SimpleNamespace(
+        id=uuid4(),
+        url="https://arxiv.org/abs/1706.03762",
+        arxiv_id="1706.03762",
+        storage_path=None,
+        metadata_={},
+        ingest_status=IngestStatus.PENDING,
+        content_hash=None,
+    )
+    session = _SourceSession(source)
+
+    class _Client(_HttpClient):
+        async def get(self, url):
+            requested_urls.append(url)
+            return _HttpResponse()
+
+    class _Page:
+        def extract_text(self):
+            return "Readable PDF text. " * 20
+
+    class _Reader:
+        def __init__(self, _stream):
+            self.pages = [_Page()]
+
+    class _Embedder:
+        def __init__(self):
+            pass
+
+        async def embed(self, texts):
+            return [[0.0] * 768 for _ in texts]
+
+    monkeypatch.setattr(handlers.httpx, "AsyncClient", _Client)
+    monkeypatch.setattr("pypdf.PdfReader", _Reader)
+    monkeypatch.setattr("app.providers.embedding.GeminiEmbeddingProvider", _Embedder)
+
+    await handlers.handle_source_ingest(session, {"source_id": str(source.id)})
+
+    assert requested_urls == ["https://arxiv.org/pdf/1706.03762"]
+
+
+@pytest.mark.asyncio
+async def test_remote_pdf_with_octet_stream_content_type_is_extracted(monkeypatch):
+    source = SimpleNamespace(
+        id=uuid4(),
+        url="https://repository.example/paper",
+        storage_path=None,
+        metadata_={},
+        ingest_status=IngestStatus.PENDING,
+        content_hash=None,
+    )
+    session = _SourceSession(source)
+
+    class _OctetResponse(_HttpResponse):
+        headers = {"content-type": "application/octet-stream"}
+
+    class _Client(_HttpClient):
+        async def get(self, _url):
+            return _OctetResponse()
+
+    class _Page:
+        def extract_text(self):
+            return "Readable PDF text. " * 20
+
+    class _Reader:
+        def __init__(self, _stream):
+            self.pages = [_Page()]
+
+    class _Embedder:
+        def __init__(self):
+            pass
+
+        async def embed(self, texts):
+            return [[0.0] * 768 for _ in texts]
+
+    monkeypatch.setattr(handlers.httpx, "AsyncClient", _Client)
+    monkeypatch.setattr("pypdf.PdfReader", _Reader)
+    monkeypatch.setattr("app.providers.embedding.GeminiEmbeddingProvider", _Embedder)
+
+    result = await handlers.handle_source_ingest(session, {"source_id": str(source.id)})
+
+    assert result["chunks"] == 1
+
+
+@pytest.mark.parametrize(
+    ("url", "fallback"),
+    [
+        (
+            "https://en.wikipedia.org/wiki/Spectral_graph_theory",
+            "https://en.wikipedia.org/api/rest_v1/page/html/Spectral_graph_theory",
+        ),
+        (
+            "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+            "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=12345678&rettype=abstract&retmode=text",
+        ),
+    ],
+)
+def test_blocked_source_uses_an_official_read_api(url, fallback):
+    assert _source_fallback_url(url) == fallback
+
+
+def test_blocked_lookalike_domain_has_no_official_fallback():
+    assert _source_fallback_url("https://notwikipedia.org/wiki/Article") is None
+
+
+@pytest.mark.asyncio
+async def test_blocked_wikipedia_page_retries_with_official_read_api(monkeypatch):
+    source = SimpleNamespace(
+        id=uuid4(),
+        url="https://en.wikipedia.org/wiki/Spectral_graph_theory",
+        arxiv_id=None,
+        storage_path=None,
+        metadata_={},
+        ingest_status=IngestStatus.PENDING,
+        content_hash=None,
+    )
+    session = _SourceSession(source)
+    requested_urls = []
+
+    class _HtmlResponse:
+        headers = {"content-type": "text/html"}
+        text = "<p>Readable source text. " + "word " * 80 + "</p>"
+        content = text.encode()
+
+        def raise_for_status(self):
+            return None
+
+    class _Client(_HttpClient):
+        async def get(self, url):
+            requested_urls.append(url)
+            if len(requested_urls) == 1:
+                request = httpx.Request("GET", url)
+                return httpx.Response(403, request=request)
+            return _HtmlResponse()
+
+    class _Embedder:
+        def __init__(self):
+            pass
+
+        async def embed(self, texts):
+            return [[0.0] * 768 for _ in texts]
+
+    monkeypatch.setattr(handlers.httpx, "AsyncClient", _Client)
+    monkeypatch.setattr("app.providers.embedding.GeminiEmbeddingProvider", _Embedder)
+
+    await handlers.handle_source_ingest(session, {"source_id": str(source.id)})
+
+    assert requested_urls == [
+        "https://en.wikipedia.org/wiki/Spectral_graph_theory",
+        "https://en.wikipedia.org/api/rest_v1/page/html/Spectral_graph_theory",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_blocked_source_uses_saved_provider_content(monkeypatch):
+    source = SimpleNamespace(
+        id=uuid4(),
+        url="https://blocked.example/source",
+        arxiv_id=None,
+        storage_path=None,
+        metadata_={"content": "Readable provider content. " * 40},
+        ingest_status=IngestStatus.PENDING,
+        content_hash=None,
+    )
+    session = _SourceSession(source)
+    requested_urls = []
+
+    class _Client(_HttpClient):
+        async def get(self, url):
+            requested_urls.append(url)
+            request = httpx.Request("GET", url)
+            return httpx.Response(403, request=request)
+
+    class _Embedder:
+        def __init__(self):
+            pass
+
+        async def embed(self, texts):
+            return [[0.0] * 768 for _ in texts]
+
+    monkeypatch.setattr(handlers.httpx, "AsyncClient", _Client)
+    monkeypatch.setattr("app.providers.embedding.GeminiEmbeddingProvider", _Embedder)
+
+    await handlers.handle_source_ingest(session, {"source_id": str(source.id)})
+
+    assert requested_urls == ["https://blocked.example/source"]
+    assert source.ingest_status == IngestStatus.EMBEDDED
+
+
+@pytest.mark.asyncio
+async def test_blocked_source_uses_tavily_extract_for_existing_source(monkeypatch):
+    source = SimpleNamespace(
+        id=uuid4(),
+        url="https://blocked.example/source",
+        arxiv_id=None,
+        storage_path=None,
+        metadata_={},
+        ingest_status=IngestStatus.PENDING,
+        content_hash=None,
+    )
+    session = _SourceSession(source)
+
+    class _Client(_HttpClient):
+        async def get(self, url):
+            request = httpx.Request("GET", url)
+            return httpx.Response(403, request=request)
+
+    async def fake_extract(_provider, url):
+        assert url == source.url
+        return "Readable extracted source content. " * 40
+
+    class _Embedder:
+        def __init__(self):
+            pass
+
+        async def embed(self, texts):
+            return [[0.0] * 768 for _ in texts]
+
+    monkeypatch.setattr(handlers.httpx, "AsyncClient", _Client)
+    monkeypatch.setattr("app.core.config.get_settings", lambda: SimpleNamespace(tavily_api_key="key"))
+    monkeypatch.setattr("app.providers.tavily.TavilySearchProvider.extract", fake_extract)
+    monkeypatch.setattr("app.providers.embedding.GeminiEmbeddingProvider", _Embedder)
+
+    await handlers.handle_source_ingest(session, {"source_id": str(source.id)})
+
+    assert source.ingest_status == IngestStatus.EMBEDDED
+    assert source.metadata_["content_source"] == "tavily_extract"
+
+
+@pytest.mark.asyncio
+async def test_blocked_doi_source_uses_openalex_pdf_fallback(monkeypatch):
+    source = SimpleNamespace(
+        id=uuid4(),
+        url="https://dl.acm.org/doi/10.1234/example",
+        doi="10.1234/example",
+        arxiv_id=None,
+        storage_path=None,
+        metadata_={},
+        ingest_status=IngestStatus.PENDING,
+        content_hash=None,
+    )
+    session = _SourceSession(source)
+    requested_urls = []
+
+    class _OpenAlexResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "best_oa_location": {"pdf_url": "https://repository.example/paper.pdf"},
+            }
+
+    class _Client(_HttpClient):
+        async def get(self, url):
+            requested_urls.append(url)
+            if url == source.url:
+                request = httpx.Request("GET", url)
+                return httpx.Response(403, request=request)
+            if url.startswith("https://api.openalex.org/works/"):
+                return _OpenAlexResponse()
+            return _HttpResponse()
+
+    class _Page:
+        def extract_text(self):
+            return "Readable PDF text. " * 20
+
+    class _Reader:
+        def __init__(self, _stream):
+            self.pages = [_Page()]
+
+    class _Embedder:
+        def __init__(self):
+            pass
+
+        async def embed(self, texts):
+            return [[0.0] * 768 for _ in texts]
+
+    monkeypatch.setattr(handlers.httpx, "AsyncClient", _Client)
+    monkeypatch.setattr("pypdf.PdfReader", _Reader)
+    monkeypatch.setattr("app.providers.embedding.GeminiEmbeddingProvider", _Embedder)
+
+    await handlers.handle_source_ingest(session, {"source_id": str(source.id)})
+
+    assert requested_urls == [
+        source.url,
+        "https://api.openalex.org/works/https://doi.org/10.1234/example",
+        "https://repository.example/paper.pdf",
+    ]
 
 
 @pytest.mark.asyncio

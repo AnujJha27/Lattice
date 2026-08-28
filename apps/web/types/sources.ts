@@ -12,6 +12,7 @@ export interface SourceCandidate {
   doi: string | null;
   arxiv_id: string | null;
   authors: string[];
+  extra: Record<string, unknown>;
 }
 
 export interface RankedCandidate {
@@ -36,6 +37,7 @@ export interface SourceAcceptPayload {
   doi?: string | null;
   arxiv_id?: string | null;
   concept_id?: string | null;
+  content?: string | null;
 }
 
 export interface SourceItem {

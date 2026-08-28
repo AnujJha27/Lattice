@@ -52,6 +52,7 @@ class SourceAccept(BaseModel):
     doi: str | None = None
     arxiv_id: str | None = None
     concept_id: str | None = None  # optional immediate link to a Brain concept
+    content: str | None = Field(default=None, max_length=400_000)
 
 
 class SourceNote(BaseModel):

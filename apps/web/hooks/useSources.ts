@@ -43,3 +43,14 @@ export function useAcceptSource() {
     },
   });
 }
+
+export function useRetrySource() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sourceId: string) =>
+      api<SourceItem>(`/sources/${sourceId}/retry`, { method: "POST" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sources", "library"] });
+    },
+  });
+}

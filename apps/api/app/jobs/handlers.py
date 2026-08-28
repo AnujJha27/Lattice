@@ -2,6 +2,7 @@
 import logging
 import uuid
 from datetime import UTC, datetime
+from urllib.parse import quote, unquote, urlencode, urlparse
 
 import httpx
 from sqlalchemy import select
@@ -15,6 +16,10 @@ from app.modules.sources.extraction import extract_text
 logger = logging.getLogger(__name__)
 
 MAX_TEXT_CHARS = 400_000
+SOURCE_HEADERS = {
+    "Accept": "text/html, text/plain, application/pdf, application/xhtml+xml",
+    "User-Agent": "LatticeSourceBot/0.1 (+learning research)",
+}
 
 
 async def handle_source_ingest(session: AsyncSession, payload: dict) -> dict:
@@ -24,18 +29,27 @@ async def handle_source_ingest(session: AsyncSession, payload: dict) -> dict:
     if source is None:
         raise ValueError(f"source {source_id} not found")
     if source.url:
+        fetch_url = _source_fetch_url(source)
         async with httpx.AsyncClient(
             follow_redirects=True,
             timeout=30,
-            headers={"User-Agent": "LatticeSourceBot/0.1 (+learning research)"},
+            headers=SOURCE_HEADERS,
         ) as client:
-            response = await client.get(source.url)
-            response.raise_for_status()
+            response, fetch_url = await _fetch_source_response(client, source)
         source.ingest_status = IngestStatus.FETCHED
-        content_type = response.headers.get("content-type", "")
-        if "text/html" not in content_type and "text/plain" not in content_type and "application/pdf" not in content_type:
+        content_type = response.headers.get("content-type", "").lower()
+        is_pdf = (
+            "application/pdf" in content_type
+            or response.content.startswith(b"%PDF-")
+            or urlparse(fetch_url).path.lower().endswith(".pdf")
+        )
+        if not is_pdf and not (
+            content_type.startswith("text/")
+            or "html" in content_type
+            or not content_type
+        ):
             raise ValueError(f"unsupported content type: {content_type}")
-        if "application/pdf" in content_type:
+        if is_pdf:
             text = extract_pdf(response.content)[:MAX_TEXT_CHARS]
         else:
             text = extract_text(response.text)[:MAX_TEXT_CHARS]
@@ -93,6 +107,140 @@ async def handle_source_ingest(session: AsyncSession, payload: dict) -> dict:
         "characters": len(text),
         "embedded_at": datetime.now(UTC).isoformat(),
     }
+
+
+def _source_fetch_url(source: Source) -> str:
+    """Use arXiv's stable PDF endpoint when an academic source has an ID."""
+    arxiv_id = getattr(source, "arxiv_id", None)
+    if arxiv_id and urlparse(source.url).hostname in {"arxiv.org", "www.arxiv.org"}:
+        identifier = str(arxiv_id).removeprefix("arXiv:").removeprefix("arxiv:")
+        identifier = quote(identifier, safe="/.-")
+        return f"https://arxiv.org/pdf/{identifier}"
+    return source.url
+
+
+async def _fetch_source_response(client: httpx.AsyncClient, source: Source):
+    fetch_url = _source_fetch_url(source)
+    try:
+        response = await client.get(fetch_url)
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        fallback_url = _source_fallback_url(source.url) if exc.response.status_code == 403 else None
+        if fallback_url is not None:
+            try:
+                fetch_url = fallback_url
+                response = await client.get(fetch_url)
+                response.raise_for_status()
+                return response, fetch_url
+            except httpx.HTTPError:
+                pass
+        if exc.response.status_code == 403:
+            fallback_url = await _openalex_fallback_url(client, source)
+            if fallback_url is not None:
+                try:
+                    fetch_url = fallback_url
+                    response = await client.get(fetch_url)
+                    response.raise_for_status()
+                    return response, fetch_url
+                except httpx.HTTPError:
+                    pass
+        inline = await _source_content_fallback(source)
+        if inline is not None:
+            return inline
+        raise
+    except httpx.HTTPError:
+        inline = await _source_content_fallback(source)
+        if inline is not None:
+            return inline
+        raise
+    return response, fetch_url
+
+
+async def _openalex_fallback_url(client: httpx.AsyncClient, source: Source) -> str | None:
+    doi = str(getattr(source, "doi", None) or "").strip()
+    for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
+        doi = doi.removeprefix(prefix)
+    if not doi:
+        return None
+    lookup_url = f"https://api.openalex.org/works/https://doi.org/{quote(doi, safe='/.-_')}"
+    try:
+        response = await client.get(lookup_url)
+        response.raise_for_status()
+        from app.providers.openalex import _open_access_url
+
+        return _open_access_url(response.json())
+    except (AttributeError, httpx.HTTPError, TypeError, ValueError):
+        return None
+
+
+async def _source_content_fallback(source: Source):
+    inline = _provider_content_response(source)
+    if inline is not None:
+        return inline
+
+    from app.core.config import get_settings
+
+    api_key = get_settings().tavily_api_key
+    if not api_key:
+        return None
+    try:
+        from app.providers.tavily import TavilySearchProvider
+
+        content = await TavilySearchProvider(api_key).extract(source.url)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 429:
+            raise
+        return None
+    except (httpx.HTTPError, TypeError, ValueError):
+        return None
+    if not isinstance(content, str) or len(content) < 200:
+        return None
+    source.metadata_ = {
+        **(source.metadata_ or {}),
+        "content": content[:400_000],
+        "content_source": "tavily_extract",
+    }
+    return _provider_content_response(source)
+
+
+def _provider_content_response(source: Source):
+    content = (source.metadata_ or {}).get("content")
+    if not isinstance(content, str) or len(content) < 200:
+        return None
+    request = httpx.Request("GET", source.url)
+    return (
+        httpx.Response(
+            200,
+            request=request,
+            headers={"content-type": "text/plain"},
+            content=content.encode("utf-8"),
+        ),
+        "provider-content",
+    )
+
+
+def _source_fallback_url(url: str) -> str | None:
+    """Use a publisher's official read API after a blocked HTML page."""
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    path = parsed.path
+
+    if (host == "wikipedia.org" or host.endswith(".wikipedia.org")) and path.startswith("/wiki/"):
+        title = unquote(path.removeprefix("/wiki/")).strip("/")
+        if title:
+            return f"https://{host}/api/rest_v1/page/html/{quote(title, safe='')}"
+
+    parts = [unquote(part) for part in path.split("/") if part]
+    pubmed_id = None
+    if host == "pubmed.ncbi.nlm.nih.gov" and len(parts) == 1 and parts[0].isdigit():
+        pubmed_id = parts[0]
+    elif host == "www.ncbi.nlm.nih.gov" and parts[:1] == ["pubmed"] and len(parts) == 2 and parts[1].isdigit():
+        pubmed_id = parts[1]
+    if pubmed_id:
+        query = urlencode({"db": "pubmed", "id": pubmed_id, "rettype": "abstract", "retmode": "text"})
+        return f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?{query}"
+
+    return None
 
 
 def hashlib_sha256(text: str) -> str:

@@ -105,6 +105,7 @@ async def _persist_discovered(session: AsyncSession, concept: Concept, candidate
     result = await session.execute(sa_select(Source).where(Source.url == candidate.url))
     source = result.scalar_one_or_none()
     if source is None:
+        raw_content = candidate.extra.get("raw_content")
         source = Source(
             title=candidate.title[:500],
             url=candidate.url,
@@ -119,9 +120,21 @@ async def _persist_discovered(session: AsyncSession, concept: Concept, candidate
             arxiv_id=candidate.arxiv_id,
             retrieved_at=datetime.now(UTC),
             ingest_status=IngestStatus.PENDING,
+            metadata_=(
+                {"content": raw_content[:400_000], "content_source": "search_provider"}
+                if isinstance(raw_content, str) else {}
+            ),
         )
         session.add(source)
         await session.flush()
+    elif source.ingest_status == IngestStatus.PENDING:
+        raw_content = candidate.extra.get("raw_content")
+        if isinstance(raw_content, str):
+            source.metadata_ = {
+                **(source.metadata_ or {}),
+                "content": raw_content[:400_000],
+                "content_source": "search_provider",
+            }
 
     if source.ingest_status == IngestStatus.PENDING:
         await enqueue_job(

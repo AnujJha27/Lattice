@@ -7,7 +7,7 @@ from app.db.models import Concept, Source
 from app.db.models.source import IngestStatus, SourceOrigin, SourceType
 from app.jobs.queue import enqueue_job
 from app.modules.lessons.context import _persist_discovered
-from app.modules.sources.routes import _to_out, list_sources
+from app.modules.sources.routes import _to_out, list_sources, retry_source
 from app.modules.sources.schemas import SourceCandidate
 
 
@@ -119,6 +119,45 @@ def test_source_output_exposes_ingest_error():
     output = _to_out(source, 0, "HTTPStatusError: 403 Forbidden")
 
     assert output.ingest_error == "HTTPStatusError: 403 Forbidden"
+
+
+@pytest.mark.asyncio
+async def test_failed_source_can_be_requeued(monkeypatch):
+    source = SimpleNamespace(
+        id=uuid4(),
+        title="Blocked source",
+        url="https://example.com/source",
+        source_type=SourceType.OTHER,
+        origin=SourceOrigin.DISCOVERED,
+        publisher=None,
+        authors=[],
+        publication_date=None,
+        ingest_status=IngestStatus.FAILED,
+        created_at=None,
+    )
+    queued = []
+
+    class Session:
+        async def execute(self, _statement):
+            return _Result(source)
+
+        async def commit(self):
+            return None
+
+    async def fake_enqueue(_session, job_type, payload, **kwargs):
+        queued.append((job_type, payload, kwargs))
+
+    monkeypatch.setattr("app.jobs.queue.enqueue_job", fake_enqueue)
+
+    output = await retry_source(str(source.id), SimpleNamespace(id=uuid4()), Session())
+
+    assert source.ingest_status == IngestStatus.PENDING
+    assert output.ingest_status == "PENDING"
+    assert queued == [(
+        "SOURCE_INGEST",
+        {"source_id": str(source.id)},
+        {"dedupe_key": f"ingest:{source.id}"},
+    )]
 
 
 @pytest.mark.asyncio

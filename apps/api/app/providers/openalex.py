@@ -57,8 +57,13 @@ def _open_access_url(work: dict) -> str | None:
     for location in locations:
         if not isinstance(location, dict):
             continue
-        for key in ("pdf_url", "landing_page_url"):
-            url = location.get(key)
-            if isinstance(url, str) and url.startswith("https://"):
-                return url
+        url = location.get("pdf_url")
+        if isinstance(url, str) and url.startswith("https://"):
+            return url
+    for location in locations:
+        if not isinstance(location, dict):
+            continue
+        url = location.get("landing_page_url")
+        if isinstance(url, str) and url.startswith("https://"):
+            return url
     return None

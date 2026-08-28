@@ -31,6 +31,7 @@ export function DiscoverySearch({ onAdded }: { onAdded?: () => void }) {
       authors: c.authors,
       doi: c.doi,
       arxiv_id: c.arxiv_id,
+      content: typeof c.extra.raw_content === "string" ? c.extra.raw_content : undefined,
     });
     onAdded?.();
   }

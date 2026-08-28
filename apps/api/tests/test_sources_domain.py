@@ -10,6 +10,7 @@ from app.modules.sources.ranking import (
     relevance_score,
 )
 from app.modules.sources.schemas import SourceCandidate
+from app.providers.openalex import _open_access_url
 
 
 class TestClassify:
@@ -163,3 +164,12 @@ class TestExtraction:
                '<article><p>The actual article body with plenty of words to satisfy length checks.</p></article></body>'
         text = extract_text(html)
         assert "actual article body" in text
+
+
+def test_openalex_prefers_pdf_from_any_open_access_location():
+    work = {
+        "best_oa_location": {"landing_page_url": "https://publisher.example/paper"},
+        "locations": [{"pdf_url": "https://repository.example/paper.pdf"}],
+    }
+
+    assert _open_access_url(work) == "https://repository.example/paper.pdf"
