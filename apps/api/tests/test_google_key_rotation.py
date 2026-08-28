@@ -78,3 +78,26 @@ async def test_gemini_embeddings_rotate_to_next_key_on_quota_error(monkeypatch):
     assert len(vectors) == 1
     assert len(vectors[0]) == 768
     assert calls == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_google_key_rotation_skips_disabled_service_key():
+    from app.providers.google import GoogleKeyRotation
+
+    calls = []
+
+    def client_factory(*, api_key):
+        calls.append(api_key)
+        return api_key
+
+    async def operation(key):
+        if key == "disabled":
+            raise RuntimeError("403 PERMISSION_DENIED SERVICE_DISABLED")
+        return "ok"
+
+    result = await GoogleKeyRotation(
+        ["disabled", "working"], client_factory
+    ).call(operation)
+
+    assert result == "ok"
+    assert calls == ["disabled", "working"]

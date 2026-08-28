@@ -16,6 +16,11 @@ def is_quota_error(exc: Exception) -> bool:
     return str(code) == "429" or "429" in message or "resource_exhausted" in message
 
 
+def is_key_unavailable_error(exc: Exception) -> bool:
+    """Allow another configured project key to handle a disabled project."""
+    return is_quota_error(exc) or "service_disabled" in str(exc).casefold()
+
+
 class GoogleKeyRotation:
     """Try each configured key once, then stick to the successful key."""
 
@@ -39,7 +44,7 @@ class GoogleKeyRotation:
             try:
                 result = await operation(self._client(index))
             except Exception as exc:
-                if not is_quota_error(exc) or offset == len(self._keys) - 1:
+                if not is_key_unavailable_error(exc) or offset == len(self._keys) - 1:
                     raise
                 last_error = exc
                 continue
@@ -57,7 +62,7 @@ class GoogleKeyRotation:
                     yielded = True
                     yield item
             except Exception as exc:
-                if not is_quota_error(exc) or yielded or offset == len(self._keys) - 1:
+                if not is_key_unavailable_error(exc) or yielded or offset == len(self._keys) - 1:
                     raise
                 continue
             self._current = index

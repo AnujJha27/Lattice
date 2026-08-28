@@ -118,7 +118,10 @@ def test_source_output_exposes_ingest_error():
 
     output = _to_out(source, 0, "HTTPStatusError: 403 Forbidden")
 
-    assert output.ingest_error == "HTTPStatusError: 403 Forbidden"
+    assert output.ingest_error == (
+        "This source blocks automated access. Open it directly in your browser, "
+        "or use an open-access copy."
+    )
 
 
 @pytest.mark.asyncio

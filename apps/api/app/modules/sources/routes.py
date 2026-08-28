@@ -241,7 +241,16 @@ def _to_out(s: Source, chunk_count: int, ingest_error: str | None = None) -> Sou
         authors=s.authors or [],
         published=s.publication_date,
         ingest_status=s.ingest_status.value,
-        ingest_error=ingest_error,
+        ingest_error=_display_ingest_error(ingest_error),
         chunk_count=chunk_count,
         created_at=s.created_at.isoformat() if s.created_at else None,
     )
+
+
+def _display_ingest_error(error: str | None) -> str | None:
+    if error and "403 Forbidden" in error:
+        return (
+            "This source blocks automated access. Open it directly in your browser, "
+            "or use an open-access copy."
+        )
+    return error
