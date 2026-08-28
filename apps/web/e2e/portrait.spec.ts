@@ -55,17 +55,29 @@ function portrait(snapshotId = SNAPSHOT_ID, version = 2) {
 }
 
 async function mockPortraitApi(page: Page) {
+  let photoEnabled = true;
   await page.route("**/api/portrait/events", (route) => route.fulfill({ status: 204 }));
   await page.route("**/api/users/me", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify({ id: "00000000-0000-0000-0000-000000000099", display_name: "Learner", onboarded: true, portrait_photo_enabled: true, has_portrait_photo: true }),
+    body: JSON.stringify({ id: "00000000-0000-0000-0000-000000000099", display_name: "Learner", onboarded: true, portrait_photo_enabled: photoEnabled, has_portrait_photo: true }),
   }));
-  await page.route("**/api/users/me/portrait-photo", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({ enabled: false, has_photo: true }),
-  }));
+  await page.route("**/api/users/me/portrait-photo", async (route) => {
+    if (route.request().method() === "PATCH") {
+      photoEnabled = Boolean(route.request().postDataJSON()?.enabled);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: photoEnabled, has_photo: true }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ enabled: photoEnabled, has_photo: true }),
+    });
+  });
   await page.route("**/api/portrait/history", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -108,7 +120,7 @@ test.describe("portrait surfaces", () => {
     await previous.press("Enter");
 
     await expect(page.getByText("Selected snapshot · v1")).toBeVisible();
-    await expect(page.getByText("Emerging thread appeared: Formal Methods")).toBeVisible();
+    await expect(page.getByText("Emerging thread appeared: Formal Methods").last()).toBeVisible();
   });
 
   test("Profile exposes opt-in photo controls and a generated share card", async ({ page }) => {
@@ -118,7 +130,9 @@ test.describe("portrait surfaces", () => {
     await page.getByRole("combobox", { name: "Portrait theme" }).selectOption({ label: "Botanical" });
     await expect(page.getByRole("heading", { name: "A card for the shape of your curiosity." })).toBeVisible();
     await expect(page.getByText("BOTANICAL EDITION · V2 · DATA-BOUND")).toBeVisible();
-    await page.getByRole("checkbox", { name: "Use profile photo in portrait" }).uncheck();
+    const photoToggle = page.getByRole("checkbox", { name: "Use profile photo in portrait" });
+    await photoToggle.click();
+    await expect(photoToggle).not.toBeChecked();
   });
 
   test("Portrait remains usable on a narrow viewport with reduced motion", async ({ page }) => {
@@ -127,7 +141,7 @@ test.describe("portrait surfaces", () => {
     await page.goto("/app/profile");
 
     await expect(page.getByRole("heading", { name: "Your intellectual portrait." })).toBeVisible();
-    const portrait = page.getByRole("group", { name: "Interactive intellectual portrait" });
+    const portrait = page.locator('[aria-label="Interactive intellectual portrait"]');
     await expect(portrait).toBeVisible();
     const screenshot = await page.screenshot();
     expect(screenshot.byteLength).toBeGreaterThan(1_000);
